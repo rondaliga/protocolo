@@ -52,6 +52,8 @@ legacy/                    versão Python anterior (referência)
    e guarde a senha do banco num gerenciador de senhas.
 2. Abra **SQL Editor → New query**, cole **todo** o arquivo `supabase/schema.sql` e clique **Run**.
    (Cria tabelas, triggers, RPCs, RLS e alguns setores de exemplo.)
+   **Logo em seguida, rode também `supabase/02_prazos_alertas.sql`** (prazos, tempos máximos, foto, destino e alertas —
+   veja a seção 4B). Pode rodar de novo sem problema.
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
 4. **Setores** (SQL Editor): ajuste à sua unidade.
@@ -107,9 +109,9 @@ python3 -m http.server 8080 --directory dist        # http://localhost:8080
 
 | Papel | Pode |
 |---|---|
-| `portaria` | Registrar protocolo (1ª etapa); corrigir descrição |
-| `adm` | Confirmar a 2ª etapa; corrigir descrição |
-| `super_setor` | Confirmar a 3ª etapa **no seu setor**; vê só o que aguarda recebimento ou foi recebido no seu setor |
+| `portaria` | Registrar protocolo (1ª etapa) com tipo, urgência e foto; corrigir descrição |
+| `adm` | Confirmar a 2ª etapa **escolhendo o setor de destino**; ajustar prazo; corrigir descrição |
+| `super_setor` | Confirmar a 3ª etapa **no seu setor**; vê só o que o ADM encaminhou a ele (ou já recebeu) |
 | `gestor` | Consultar tudo, imprimir, corrigir descrição, ver e verificar a auditoria |
 
 Status: `Pendente ADM` → `Pendente Setor Final` → `Concluído / Entregue` (derivado por trigger).
@@ -120,6 +122,63 @@ Status: `Pendente ADM` → `Pendente Setor Final` → `Concluído / Entregue` (d
 - **Segregação de funções**: a mesma pessoa não assina duas etapas do mesmo protocolo.
 - **Correção de descrição**: exige justificativa (≥ 10 caracteres) + PIN; a original é preservada e aparece na ficha/impressão.
 - **Orientação de preenchimento** (texto do livro) fixa no formulário de cadastro, mais bloqueio de CPF na descrição.
+
+## 4B. Versão 2 — alinhando o processo (prazo, chegada, "onde está agora")
+
+**Problema real:** uma demanda judicial com prazo de 10 dias ficou parada na portaria, ninguém sabia onde estava, chegou ao
+ADM depois do prazo e só então foi para a superintendência. A versão 2 ataca cada ponto:
+
+| Falha do processo | O que o sistema faz agora |
+|---|---|
+| Ninguém sabia que tinha chegado | A Portaria registra **no ato**, com **foto** do envelope/capa (obrigatória para judiciais). O ADM recebe **sino + som + aviso do navegador + e-mail** na hora. |
+| Ninguém sabia o prazo | Todo judicial nasce com **prazo padrão** (5 dias úteis; o ADM ajusta ao prazo real do documento, com justificativa e PIN). Coluna **Prazo** com semáforo: No prazo · Atenção (≤ 5 dias) · Vence em breve (≤ 2) · **VENCIDO**. |
+| Ninguém sabia onde estava | Coluna **Onde está agora**: "Aguardando o ADM · há 3 h 20 min" / "Aguardando Superintendência · há 1 dia". |
+| Ficou parado numa etapa | **Tempo máximo (SLA) por etapa**, contado só em **horas úteis** (08h–17h, seg–sex): ADM 4 h (2 h se urgente); setor 9 h = 1 dia útil (4 h se urgente). Estourou → e-mail ao responsável **e ao gestor**, registro na auditoria e destaque no painel. |
+| Foi para o setor errado / passou por todos | O **ADM escolhe o setor de destino** ao receber (ex.: Superintendência). Só esse setor enxerga e recebe. |
+| Sem cobrança por etapa | Cada etapa mostra quem recebeu, quando e quanto tempo levou; KPIs "Prazo vencido" e "Parados além do tempo" no painel. |
+
+**Fluxo ideal:** chegou → Portaria fotografa e registra (1 min) → ADM é avisado na hora, recebe e escolhe o destino → o setor
+é avisado na hora e confirma → concluído. Se alguém não agir no tempo, o gestor é avisado automaticamente.
+
+### Ativar os e-mails (uma vez)
+O e-mail sai por uma rotina agendada do GitHub Actions (`.github/workflows/notificacoes.yml`, a cada 15 min em horário
+comercial), usando o SMTP que você já tem (e-mail institucional, Gmail com *senha de app*, Brevo/Mailjet no plano gratuito).
+1. Gere um segredo longo (no seu computador: `openssl rand -hex 32`) e grave no banco (SQL Editor):
+   ```sql
+   select public.admin_definir_segredo_integracao('COLE_AQUI_O_SEGREDO_GERADO');
+   select public.admin_definir_parametro('url_sistema', 'https://SEU-USUARIO.github.io/SEU-REPO/');
+   ```
+2. No GitHub: **Settings → Secrets and variables → Actions → Secrets**: `INTEGRACAO_SEGREDO` (o mesmo valor),
+   `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`. Em **Variables** (opcionais): `SMTP_PORT` (587), `SMTP_FROM`, `SMTP_SSL` (`true` para a porta 465).
+   `SUPABASE_URL` e `SUPABASE_ANON_KEY` já existem do deploy.
+3. **Actions → Avisos por e-mail → Run workflow** para testar. Os usuários precisam ter e-mail no perfil (o
+   `admin_cadastrar_perfil` já grava; perfis antigos são preenchidos pela migração).
+
+A rotina **não usa a chave `service_role`**: o segredo só permite verificar SLA e ler/marcar a fila de e-mails.
+
+### Ajustes pelo SQL Editor
+```sql
+select * from public.parametros;                                   -- veja todos os valores
+select public.admin_definir_parametro('prazo_judicial_dias', '10'); -- prazo padrão dos judiciais (dias úteis)
+select public.admin_definir_parametro('sla_adm_horas', '2');        -- tempo máximo do ADM
+select public.admin_definir_parametro('foto_obrigatoria_judicial', 'false');
+select public.admin_cadastrar_feriado('2027-02-09', 'Carnaval');    -- feriados móveis/estaduais/municipais
+select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superintendência','4455');
+```
+
+### Limites honestos da versão 2
+- **Sino, som e aviso do navegador só funcionam com o sistema aberto** em alguma aba (verificação a cada 30 s). Fora disso
+  valem os **e-mails**. Notificação push com o navegador fechado exigiria serviço externo (não incluído, para manter 100% gratuito).
+- **GitHub Actions agendado não é relógio exato**: pode atrasar alguns minutos em horários de pico e é **desativado após 60 dias
+  sem atividade** no repositório (um commit ou execução manual reativa). Para a chegada e o encaminhamento o e-mail é enfileirado
+  na hora, mas só **sai no próximo ciclo da rotina** (até ~15 min); o aviso imediato é o do sistema.
+- **Feriados**: os nacionais de data fixa (2026–2027) vêm cadastrados; **cadastre os móveis e os locais**, senão contam como dia útil.
+- **Os e-mails nunca trazem a descrição do documento** (LGPD): só nº, tipo, prazo e link.
+- **Foto**: fica em bucket privado do Supabase (só quem pode ver o protocolo vê a foto; não há link público), é reduzida
+  no navegador (≤ 1600 px, JPEG ≤ 1,5 MB) e é imutável. O plano gratuito do Supabase tem 1 GB de armazenamento (≈ milhares de fotos).
+  Oriente a Portaria a fotografar **só a capa/envelope**, não o conteúdo.
+- O prazo padrão é uma **estimativa** para não ficar sem controle; o prazo legal real é o do documento — o ADM deve ajustá-lo.
+- Se alguém trocar de setor ou sair, ajuste o perfil (`admin_cadastrar_perfil` / `admin_desativar_perfil`) para que os avisos cheguem à pessoa certa.
 
 ## 5. Segurança — decisões adotadas
 
@@ -164,7 +223,9 @@ Status: `Pendente ADM` → `Pendente Setor Final` → `Concluído / Entregue` (d
 # Schema (RLS, sequência, imutabilidade, PIN, auditoria) — precisa de psql e um PostgreSQL 15+
 PGHOST=localhost PGUSER=postgres bash supabase/tests/run_local.sh        # banco descartável "protocolo_teste"
 
-# Navegador de ponta a ponta (opcional; precisa de Playwright): site real + schema real
+# (o run_local.sh aplica schema.sql + 02_prazos_alertas.sql e roda 120 verificações, incluindo horas úteis, SLA, foto e e-mails)
+
+# Navegador de ponta a ponta (opcional; precisa de Playwright e Pillow): site real + schema real
 bash tests/e2e/preparar_db.sh && SUPABASE_URL=http://127.0.0.1:5057 SUPABASE_ANON_KEY=chave-de-teste-0000000000 python3 scripts/build_site.py \
   && python3 tests/e2e/run_e2e.py ./saida-e2e
 ```
@@ -174,5 +235,5 @@ só o transporte HTTP é simulado. **Valide também no seu projeto Supabase real
 com os quatro perfis).
 
 ## 8. Próximos passos sugeridos
-Cadastro de MFA (TOTP); gestão de usuários/setores pela interface (hoje via SQL); recebimento pelo ADM com indicação do
-setor de destino; alerta de protocolos parados há X dias; rotina de backup automatizada (GitHub Actions + `pg_dump`).
+Cadastro de MFA (TOTP); gestão de usuários, setores, feriados e parâmetros pela interface (hoje via SQL); relatório mensal de
+cumprimento de prazos por setor; push com o navegador fechado; rotina de backup automatizada (GitHub Actions + `pg_dump`).

@@ -41,8 +41,30 @@
   const data = (iso) => (iso ? FD.format(new Date(iso)) : '');
   const hora = (iso, seg = false) => (iso ? (seg ? FHS : FH).format(new Date(iso)) : '');
 
+  // tempo decorrido legível ("há 3 h 20 min")
+  const ha = (iso) => {
+    if (!iso) return '';
+    const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+    if (m < 1) return 'agora mesmo';
+    if (m < 60) return `há ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 48) return `há ${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+    return `há ${Math.floor(h / 24)} dias`;
+  };
+  const SEM = { ok: 'No prazo', atencao: 'Atenção', critico: 'Vence em breve', vencido: 'VENCIDO', sem_prazo: 'Sem prazo', concluido: 'Concluído' };
+  const diasTxt = (x) => (x.status === 'concluido' ? '' : x.dias_restantes == null ? '' : x.dias_restantes < 0
+    ? `${-x.dias_restantes} dia(s) de atraso` : x.dias_restantes === 0 ? 'vence hoje' : `${x.dias_restantes} dia(s)`);
+  const prazoHtml = (x) => (x.status === 'concluido' ? '<span class="sem concluido">Concluído</span>'
+    : `<span class="sem ${esc(x.semaforo)}">${esc(SEM[x.semaforo] || x.semaforo)}</span>${x.prazo_data ? `<small class="et-sub">${data(x.prazo_data + 'T12:00:00')} · ${esc(diasTxt(x))}</small>` : ''}`);
+  const tipoHtml = (x) => (x.tipo === 'judicial' ? '<span class="tipo-jud">JUDICIAL</span>' : '') + (x.urgente ? '<span class="tipo-urg">URGENTE</span>' : '');
+  const ondeHtml = (x) => {
+    if (x.status === 'concluido') return `${chip(x.status)}<small>Entregue a ${esc(x.e3_setor || '')}</small>`;
+    const quem = x.status === 'pendente_adm' ? 'Aguardando o ADM' : `Aguardando ${esc(x.setor_destino_nome || 'o setor')}`;
+    return `${chip(x.status)}<small class="${x.sla_estourado ? 'atraso' : ''}">${quem} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' ⚠ além do tempo' : ''}</small>`;
+  };
+
   const estado = { sessao: null, perfil: null, aba: 'protocolos', pagina: 1, porPagina: 25, total: 0,
-                   aberto: null, logo: false, ultimaAtividade: Date.now(), reqSeq: 0 };
+                   aberto: null, logo: false, setores: null, alertasVistos: null, fotoBlob: null, fotoUrl: null, ultimaAtividade: Date.now(), reqSeq: 0 };
 
   // ------------------------------------------------------------------ cliente Supabase (Auth + REST)
   const SK = 'lp.sessao';
@@ -159,10 +181,12 @@
     $('#btn-novo').hidden = perfil.papel !== 'portaria';
     $('#btn-aba-auditoria').hidden = perfil.papel !== 'gestor';
     $$('.eu').forEach((e) => { e.textContent = perfil.nome; });
+    $('.sino-wrap').hidden = perfil.papel === 'portaria'; estado.alertasVistos = null;
     estado.ultimaAtividade = Date.now();
     mostrar('app');
     trocarAba('protocolos');
     await recarregar();
+    await verificarAlertas(false);
   }
 
   function trocarAba(n) {
@@ -177,7 +201,8 @@
   function filtros() {
     const f = $('#form-filtros');
     const v = (n) => (f[n].value || '').trim() || null;
-    return { p_q: v('q'), p_status: v('status'), p_data_ini: v('data_ini'), p_data_fim: v('data_fim') };
+    return { p_q: v('q'), p_status: v('status'), p_data_ini: v('data_ini'), p_data_fim: v('data_fim'),
+             p_alerta: v('alerta'), p_ordem: f.ordem.value || 'recentes' };
   }
 
   async function carregarResumo() {
@@ -185,6 +210,11 @@
     $('#k-total').textContent = r.total; $('#k-adm').textContent = r.pendente_adm;
     $('#k-setor').textContent = r.pendente_setor; $('#k-ok').textContent = r.concluido;
     $('#k-hoje').textContent = `${r.hoje} registrado(s) hoje`;
+    $('#k-venc').textContent = r.vencidos; $('#k-crit').textContent = `${r.criticos} vencem em até 2 dias`;
+    $('#k-sla').textContent = r.sla_estourado;
+    const fx = $('#faixa-alertas');
+    fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
+    fx.textContent = `⚠ Atenção: ${r.vencidos} demanda(s) com prazo vencido e ${r.sla_estourado} parada(s) além do tempo máximo de recebimento.`;
   }
 
   function celulaEtapa(em, user, setor) {
@@ -198,10 +228,11 @@
     if (seq !== estado.reqSeq) return;                    // resposta antiga: ignora
     estado.total = r.total;
     $('#tbody').innerHTML = r.itens.map((x) => `
-      <tr data-id="${esc(x.id)}" tabindex="0">
+      <tr data-id="${esc(x.id)}" tabindex="0" class="${x.semaforo === 'vencido' && x.status !== 'concluido' ? 'linha-vencida' : x.sla_estourado ? 'linha-sla' : ''}">
         <td class="num">${esc(x.numero)}</td>
-        <td class="desc">${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}</td>
-        <td>${chip(x.status)}</td>
+        <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag">📷</span>' : ''}</td>
+        <td class="onde">${ondeHtml(x)}</td>
+        <td class="prazo">${prazoHtml(x)}</td>
         <td>${celulaEtapa(x.e1_em, x.e1_usuario)}</td>
         <td>${celulaEtapa(x.e2_em, x.e2_usuario)}</td>
         <td>${celulaEtapa(x.e3_em, x.e3_usuario, x.e3_setor)}</td>
@@ -211,8 +242,9 @@
     $('#pg-info').textContent = `Página ${estado.pagina} de ${paginas}`;
     $('#pg-ant').disabled = estado.pagina <= 1; $('#pg-prox').disabled = estado.pagina >= paginas;
     $('#contagem').textContent = `${r.total} registro(s)`;
-    const st = $('#form-filtros').status.value;
-    $$('.kpi').forEach((k) => k.classList.toggle('sel', k.dataset.status === st && st !== ''));
+    const ff = $('#form-filtros');
+    $$('.kpi').forEach((k) => k.classList.toggle('sel', k.dataset.alerta
+      ? ff.alerta.value === k.dataset.alerta : (k.dataset.status === ff.status.value && ff.alerta.value === '' && ff.status.value !== '')));
   }
 
   async function recarregar() {
@@ -241,6 +273,7 @@
     const podeAdm = papel === 'adm' && p.status === 'pendente_adm';
     const podeSetor = papel === 'super_setor' && p.status === 'pendente_setor';
     const podeCorrigir = ['portaria', 'adm', 'gestor'].includes(papel);
+    const podePrazo = ['adm', 'gestor'].includes(papel) && p.status !== 'concluido';
     const linhas = etapasCompletas(p).map((e) => {
       if (!e.feito) return `<li class="pendente"><div><b>${esc(e.nome)}</b><small>Aguardando recebimento</small></div><div></div></li>`;
       const png = pngSeguro(e.assinatura_png);
@@ -253,18 +286,53 @@
     const corr = (p.correcoes || []).length ? `<div class="correcoes"><h3>Correções de descrição (original preservada)</h3><ul>
       ${p.correcoes.map((c) => `<li>${data(c.corrigido_em)} ${hora(c.corrigido_em)} — ${esc(c.usuario)}: “${esc(c.anterior)}” → “${esc(c.nova)}”.
         <em>Justificativa: ${esc(c.justificativa)}</em></li>`).join('')}</ul></div>` : '';
+    const prazosHist = (p.prazos || []).length ? `<div class="correcoes"><h3>Histórico de ajustes de prazo</h3><ul>
+      ${p.prazos.map((h) => `<li>${data(h.ajustado_em)} ${hora(h.ajustado_em)} — ${esc(h.usuario)}: ${h.anterior ? data(h.anterior + 'T12:00:00') : 'sem prazo'} → ${data(h.novo + 'T12:00:00')}.
+        <em>Justificativa: ${esc(h.justificativa)}</em></li>`).join('')}</ul></div>` : '';
     $('#detalhe-corpo').innerHTML = `
       <div class="det-topo"><div><h2>${esc(p.numero)}</h2>${chip(p.status)}</div>
         <button class="btn mini sec" type="button" data-fechar>Fechar ✕</button></div>
       <div class="resumo-doc"><span>${esc(p.descricao)}</span>
         ${p.n_correcoes ? `<div class="original">Descrição original: ${esc(p.descricao_original)}</div>` : ''}</div>
-      <ul class="linha-tempo">${linhas}</ul>${corr}
+      <div class="det-grade">
+        <div><b>Tipo</b>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' · URGENTE' : ''}</div>
+        <div><b>Prazo</b>${p.prazo_data ? `${data(p.prazo_data + 'T12:00:00')} ${prazoHtml(p)}` : 'Sem prazo informado'}</div>
+        <div><b>Onde está agora</b>${p.status === 'concluido' ? `Entregue (${esc(p.e3_setor || '')})` : ondeHtml(p)}</div>
+        <div><b>Setor de destino</b>${esc(p.setor_destino_nome || 'definido pelo ADM')}</div>
+      </div>
+      <div id="det-fotos"></div>
+      <ul class="linha-tempo">${linhas}</ul>${corr}${prazosHist}
       <div class="modal-acoes">
         ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir">Corrigir descrição</button>' : ''}
+        ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
         <button class="btn" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
         ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm">Confirmar recebimento — ADM</button>' : ''}
         ${podeSetor ? '<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — Setor</button>' : ''}
       </div>`;
+    carregarFotos(p);
+  }
+
+  // fotos: bucket privado, baixadas com o token do usuário e exibidas como blob (nunca há link público)
+  async function baixarFoto(caminho) {
+    const token = await garantirToken();
+    const resp = await fetch(`${BASE}/storage/v1/object/authenticated/protocolo-fotos/${caminho.split('/').map(encodeURIComponent).join('/')}`,
+      { headers: { apikey: KEY, Authorization: `Bearer ${token}` } });
+    if (!resp.ok) throw new ErroApi('Não foi possível carregar a foto.', resp.status);
+    return URL.createObjectURL(await resp.blob());
+  }
+  async function carregarFotos(p) {
+    const alvo = $('#det-fotos'); if (!alvo || !(p.fotos || []).length) return;
+    for (const f of p.fotos) {
+      try {
+        const url = await baixarFoto(f.caminho);
+        if (estado.aberto !== p) { URL.revokeObjectURL(url); return; }
+        const img = document.createElement('img'); img.className = 'foto-det'; img.alt = 'Foto do envelope/capa'; img.src = url;
+        img.title = 'Foto registrada na chegada'; img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+        alvo.appendChild(img);
+        const leg = document.createElement('small'); leg.className = 'dica'; leg.textContent = `Foto registrada na chegada (${data(f.enviado_em)} ${hora(f.enviado_em)}).`;
+        alvo.appendChild(leg);
+      } catch { alvo.textContent = 'Foto indisponível.'; }
+    }
   }
 
   // ------------------------------------------------------------------ modais de ação
@@ -291,7 +359,49 @@
 
   function abrirNovo() {
     const f = $('#form-novo'); f.reset(); $('#cont-desc').textContent = '0'; erroForm(f, '');
+    limparFoto(); ajustarTipo();
     prepararAssinatura(f, 'pad-novo'); $('#dlg-novo').showModal(); f.descricao.focus();
+  }
+  const fotoObrigatoria = () => $('#form-novo').tipo.value === 'judicial';
+  function ajustarTipo() {
+    const f = $('#form-novo'), jud = f.tipo.value === 'judicial';
+    $('#lbl-urgente').hidden = !jud; if (!jud) f.urgente.checked = false;
+    $('#foto-obrig').textContent = jud ? '(obrigatória para demanda judicial)' : '(opcional)';
+    $('#dica-tipo').textContent = jud
+      ? 'Demanda judicial: o prazo padrão é aplicado automaticamente e o ADM é avisado na hora. O ADM pode ajustar o prazo real depois.'
+      : 'Correspondência comum: sem prazo. O ADM é avisado da chegada.';
+  }
+  function limparFoto() {
+    if (estado.fotoUrl) URL.revokeObjectURL(estado.fotoUrl);
+    estado.fotoBlob = null; estado.fotoUrl = null;
+    const im = $('#foto-previa'); im.hidden = true; im.removeAttribute('src'); const i = $('#inp-foto'); if (i) i.value = '';
+  }
+  // reduz a foto no navegador (máx. 1600 px, JPEG) — o banco aceita até 1,5 MB e só image/jpeg
+  async function prepararFoto(arquivo) {
+    if (!arquivo.type.startsWith('image/')) throw new Error('Escolha um arquivo de imagem.');
+    const bmp = await createImageBitmap(arquivo);
+    const esc1 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * esc1); c.height = Math.round(bmp.height * esc1);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    for (const q of [0.8, 0.65, 0.5, 0.35]) {
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', q));
+      if (blob && blob.size <= 1500000) return blob;
+    }
+    throw new Error('A foto ficou grande demais. Aproxime-se do documento e tente novamente.');
+  }
+  async function enviarFoto(blob) {
+    const token = await garantirToken();
+    const caminho = `${estado.sessao.uid}/${crypto.randomUUID()}.jpg`;
+    const resp = await fetch(`${BASE}/storage/v1/object/protocolo-fotos/${caminho}`, { method: 'POST',
+      headers: { apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'image/jpeg', 'x-upsert': 'false' }, body: blob });
+    if (!resp.ok) throw new ErroApi('Não foi possível enviar a foto. Verifique a conexão e tente novamente.', resp.status);
+    return caminho;
+  }
+
+  // ------------------------------------------------------------------ setores (destino do ADM)
+  async function carregarSetores() {
+    if (!estado.setores) estado.setores = await rest('setores?select=id,nome&ativo=eq.true&order=nome');
+    return estado.setores;
   }
 
   function abrirConfirmar(etapa) {
@@ -301,7 +411,22 @@
     $('#conf-numero').textContent = p.numero; $('#conf-desc').textContent = p.descricao;
     const info = $('#conf-setor-info'); info.hidden = etapa !== 3;
     if (etapa === 3) info.textContent = `Setor final de destino: ${estado.perfil.setor} (definido pelo seu perfil).`;
+    const lbl = $('#lbl-destino'); lbl.hidden = etapa !== 2;
+    if (etapa === 2) {
+      carregarSetores().then((l) => {
+        f.destino.innerHTML = '<option value="">Selecione o setor…</option>' + l.map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('');
+      }).catch((e) => erroForm(f, e.message));
+    }
     prepararAssinatura(f, 'pad-conf'); $('#dlg-confirmar').showModal(); f.pin.focus();
+  }
+
+  function abrirPrazo() {
+    const p = estado.aberto, f = $('#form-prazo');
+    f.reset(); erroForm(f, ''); f.dataset.id = String(p.id);
+    $('#prazo-numero').textContent = p.numero;
+    $('#prazo-atual').textContent = p.prazo_data ? `Prazo atual: ${data(p.prazo_data + 'T12:00:00')}` : 'Sem prazo definido.';
+    if (p.prazo_data) f.data.value = p.prazo_data;
+    $('#dlg-prazo').showModal(); f.data.focus();
   }
 
   function abrirCorrecao() {
@@ -367,7 +492,7 @@
         '2º Receb.<br>ADM<br>Data', 'Horário', 'Assinatura<br>ADM', '3º Receb.<br>Super/Setor<br>Data', 'Horário', 'Assinatura<br>Super/Setor'];
       const linhas = r.itens.map((x) => `<tr>
         <td><b>${esc(x.numero)}</b></td><td>${data(x.e1_em)}</td><td>${hora(x.e1_em)}</td>
-        <td class="d">${esc(x.descricao)}${x.n_correcoes ? ' <i>(descrição corrigida)</i>' : ''}</td>
+        <td class="d">${x.tipo === 'judicial' ? '<b>[JUDICIAL' + (x.urgente ? ' URGENTE' : '') + ']</b> ' : ''}${esc(x.descricao)}${x.n_correcoes ? ' <i>(descrição corrigida)</i>' : ''}${x.prazo_data ? `<br><small>Prazo: ${data(x.prazo_data + 'T12:00:00')}</small>` : ''}</td>
         <td>${celulaAssinatura(x.e1_tipo, sig[`${x.id}:1`], x.e1_usuario)}</td>
         <td>${data(x.e2_em)}</td><td>${hora(x.e2_em)}</td><td>${celulaAssinatura(x.e2_tipo, sig[`${x.id}:2`], x.e2_usuario)}</td>
         <td>${data(x.e3_em)}</td><td>${hora(x.e3_em)}</td><td>${celulaAssinatura(x.e3_tipo, sig[`${x.id}:3`], x.e3_usuario, x.e3_setor)}</td></tr>`).join('');
@@ -383,6 +508,8 @@
       if (r.total > r.itens.length) toast(`Foram impressos os ${r.itens.length} registros mais recentes de ${r.total}. Use filtros para os demais.`);
     } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
   }
+
+  const e3Setor = (p) => ((p.etapas || []).find((e) => e.etapa === 3) || {}).setor;
 
   async function imprimirFicha() {
     const p = estado.aberto;
@@ -401,7 +528,9 @@
         <p class="p-txt"><b>Orientação de preenchimento:</b> ${esc(ORIENTACAO)}</p>
         <table class="p-ficha-tab"><tbody>
           <tr><th>Nº do protocolo</th><td><b class="p-num">${esc(p.numero)}</b></td></tr>
-          <tr><th>Situação</th><td>${esc(STATUS[p.status])}</td></tr>
+          <tr><th>Situação</th><td>${esc(STATUS[p.status])}${p.status !== 'concluido' ? ` — ${esc(p.status === 'pendente_adm' ? 'aguardando o ADM' : 'aguardando ' + (p.setor_destino_nome || 'o setor'))}` : ''}</td></tr>
+          <tr><th>Tipo / prazo</th><td>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' (URGENTE)' : ''} · Prazo: ${p.prazo_data ? data(p.prazo_data + 'T12:00:00') : 'sem prazo informado'}</td></tr>
+          <tr><th>Setor de destino</th><td>${esc(p.setor_destino_nome || e3Setor(p) || '—')}</td></tr>
           <tr><th>Descrição do documento</th><td>${esc(p.descricao)}</td></tr></tbody></table>
         <div class="p-sec">Tramitação (3 etapas)</div>
         <table class="p-ficha-tab p-etapas"><thead><tr><th class="n">Etapa</th><th>Data</th><th>Horário</th><th>Responsável</th><th>Assinatura</th></tr></thead>
@@ -410,6 +539,44 @@
         <p class="p-meta">Registrado em ${data(p.created_at)} às ${hora(p.created_at, true)} (horário do servidor). Datas, horários e responsáveis são gerados pelo
           sistema e não podem ser editados. Emitido por ${esc(estado.perfil.nome)} em ${data(agora)} ${hora(agora)}.</p>${rodapeImpressao()}`);
     } catch (e) { toast(e.message, true); }
+  }
+
+  // ------------------------------------------------------------------ alertas (sino, som, aviso do navegador)
+  // Importante: só funcionam com o sistema aberto no navegador. Fora dele, valem os e-mails.
+  let audioCtx = null;
+  function iniciarAudio() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch { /* sem áudio */ } }
+  function bipe() {
+    if (!audioCtx || !$('#chk-som').checked) return;
+    [0, 0.25, 0.5].forEach((t) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = t === 0.5 ? 1175 : 880; g.gain.value = 0.15;
+      o.connect(g); g.connect(audioCtx.destination); o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.18);
+    });
+  }
+  const TXT_SINO = { adm: 'aguardando o seu recebimento', super_setor: 'encaminhado ao seu setor', gestor: 'em atraso' };
+
+  async function verificarAlertas(avisar) {
+    if (!estado.perfil || estado.perfil.papel === 'portaria') return;
+    let r; try { r = await rpc('minhas_pendencias'); } catch { return; }
+    const itens = r.itens || [];
+    const n = $('#sino-n'); n.textContent = itens.length; n.hidden = itens.length === 0;
+    document.title = `${itens.length ? `(${itens.length}) ` : ''}Livro de Protocolo · ${CFG.UNIDADE}`;
+    $('#vazio-sino').hidden = itens.length > 0;
+    $('#lista-sino').innerHTML = itens.map((x) => `<li data-id="${esc(x.id)}" class="${x.sla_estourado || x.semaforo === 'vencido' ? 'alerta' : ''}">
+      <strong>${esc(x.numero)}</strong> ${tipoHtml(x)} ${esc(TXT_SINO[r.papel] || '')}
+      <small>${x.aguardando_desde ? esc(ha(x.aguardando_desde)) : ''}${x.prazo_data ? ` · prazo ${data(x.prazo_data + 'T12:00:00')} (${esc(diasTxt(x))})` : ''}${x.sla_estourado ? ' · ⚠ além do tempo' : ''}</small></li>`).join('');
+    const ids = new Set(itens.map((x) => `${x.id}:${x.status}`));
+    if (avisar && estado.alertasVistos) {
+      const novos = itens.filter((x) => !estado.alertasVistos.has(`${x.id}:${x.status}`));
+      if (novos.length) {
+        bipe(); $('#btn-sino').classList.add('toca'); setTimeout(() => $('#btn-sino').classList.remove('toca'), 2000);
+        const txt = novos.length === 1 ? `Protocolo ${novos[0].numero}${novos[0].urgente ? ' URGENTE' : ''} ${TXT_SINO[r.papel] || 'precisa de atenção'}.`
+          : `${novos.length} protocolos novos precisam da sua atenção.`;
+        toast(`🔔 ${txt}`);
+        try { if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('Livro de Protocolo', { body: txt, tag: 'protocolo' }); } catch { /* ignora */ }
+      }
+    }
+    estado.alertasVistos = ids;
   }
 
   // ------------------------------------------------------------------ eventos
@@ -438,9 +605,10 @@
     const aplicar = () => { estado.pagina = 1; recarregar(); };
     f.addEventListener('submit', (ev) => ev.preventDefault());
     f.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(aplicar, 300); });
-    ['status', 'data_ini', 'data_fim'].forEach((n) => f[n].addEventListener('change', aplicar));
+    ['status', 'alerta', 'ordem', 'data_ini', 'data_fim'].forEach((n) => f[n].addEventListener('change', aplicar));
     $('#btn-limpar').addEventListener('click', () => { f.reset(); aplicar(); });
-    $('#kpis').addEventListener('click', (ev) => { const k = ev.target.closest('.kpi'); if (k) { f.status.value = k.dataset.status; aplicar(); } });
+    $('#kpis').addEventListener('click', (ev) => { const k = ev.target.closest('.kpi');
+      if (k) { f.status.value = k.dataset.status || ''; f.alerta.value = k.dataset.alerta || ''; aplicar(); } });
     $('#pg-ant').addEventListener('click', () => { estado.pagina -= 1; carregarTabela().catch((e) => toast(e.message, true)); });
     $('#pg-prox').addEventListener('click', () => { estado.pagina += 1; carregarTabela().catch((e) => toast(e.message, true)); });
 
@@ -450,7 +618,7 @@
 
     $('#detalhe-corpo').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-acao]'); if (!b) return;
-      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
+      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
     });
     document.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-fechar]')) ev.target.closest('dialog').close();
@@ -460,22 +628,42 @@
 
     $('#btn-imprimir-livro').addEventListener('click', imprimirLivro);
     $('#btn-novo').addEventListener('click', abrirNovo);
+    $('#form-novo').tipo.addEventListener('change', ajustarTipo);
+    $('#inp-foto').addEventListener('change', async (ev) => {
+      const form = $('#form-novo'); limparFoto2(ev.target.files[0]);
+      async function limparFoto2(arq) {
+        estado.fotoBlob = null; if (!arq) return;
+        try {
+          erroForm(form, ''); const blob = await prepararFoto(arq);
+          estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
+          const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false;
+        } catch (e) { erroForm(form, e.message); ev.target.value = ''; }
+      }
+    });
     $('#form-novo').descricao.addEventListener('input', (ev) => { $('#cont-desc').textContent = ev.target.value.length; });
 
     $('#form-novo').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target;
       let png; try { png = assinaturaDe(form, 'pad-novo'); } catch (e) { erroForm(form, e.message); return; }
-      enviar(form, () => rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: png }), async (r) => {
-        $('#dlg-novo').close(); toast(`Protocolo ${r.numero} registrado — aguardando ADM.`); estado.pagina = 1; await recarregar();
+      if (fotoObrigatoria() && !estado.fotoBlob) { erroForm(form, 'Demandas judiciais exigem a foto do envelope/capa.'); return; }
+      enviar(form, async () => {
+        const caminho = estado.fotoBlob ? await enviarFoto(estado.fotoBlob) : null;
+        return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: png,
+          p_tipo: form.tipo.value, p_urgente: form.urgente.checked, p_foto_caminho: caminho });
+      }, async (r) => {
+        $('#dlg-novo').close(); limparFoto();
+        toast(`Protocolo ${r.numero} registrado — o ADM foi avisado.`); estado.pagina = 1; await recarregar();
       });
     });
 
     $('#form-confirmar').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target, etapa = Number(form.dataset.etapa);
       let png; try { png = assinaturaDe(form, 'pad-conf'); } catch (e) { erroForm(form, e.message); return; }
-      enviar(form, () => rpc('confirmar_etapa', { p_protocolo_id: Number(form.dataset.id), p_etapa: etapa, p_pin: form.pin.value, p_assinatura: png }), async (r) => {
+      if (etapa === 2 && !form.destino.value) { erroForm(form, 'Selecione o setor de destino.'); return; }
+      enviar(form, () => rpc('confirmar_etapa', { p_protocolo_id: Number(form.dataset.id), p_etapa: etapa, p_pin: form.pin.value, p_assinatura: png,
+        p_setor_destino_id: etapa === 2 ? Number(form.destino.value) : null }), async (r) => {
         $('#dlg-confirmar').close();
-        toast(etapa === 2 ? `${r.numero}: recebimento do ADM registrado.` : `${r.numero}: entrega concluída no setor.`);
+        toast(etapa === 2 ? `${r.numero}: recebimento do ADM registrado e setor de destino avisado.` : `${r.numero}: entrega concluída no setor.`);
         await abrirDetalhe(form.dataset.id); await recarregar();
       });
     });
@@ -488,6 +676,30 @@
         await abrirDetalhe(form.dataset.id); await recarregar();
       });
     });
+
+    $('#form-prazo').addEventListener('submit', (ev) => {
+      ev.preventDefault(); const form = ev.target;
+      enviar(form, () => rpc('ajustar_prazo', { p_protocolo_id: Number(form.dataset.id), p_nova_data: form.data.value,
+        p_justificativa: form.justificativa.value, p_pin: form.pin.value }), async () => {
+        $('#dlg-prazo').close(); toast('Prazo ajustado e registrado no histórico.');
+        await abrirDetalhe(form.dataset.id); await recarregar(); await verificarAlertas(false);
+      });
+    });
+
+    // sino de pendências
+    $('#btn-sino').addEventListener('click', () => {
+      const p = $('#painel-sino'); p.hidden = !p.hidden; $('#btn-sino').setAttribute('aria-expanded', String(!p.hidden)); iniciarAudio();
+    });
+    document.addEventListener('click', (ev) => { if (!ev.target.closest('.sino-wrap')) $('#painel-sino').hidden = true; });
+    $('#lista-sino').addEventListener('click', (ev) => {
+      const li = ev.target.closest('li[data-id]'); if (li) { $('#painel-sino').hidden = true; abrirDetalhe(li.dataset.id); }
+    });
+    $('#btn-notif').addEventListener('click', async () => {
+      if (!('Notification' in window)) { toast('Este navegador não oferece avisos do sistema.', true); return; }
+      const r = await Notification.requestPermission();
+      toast(r === 'granted' ? 'Avisos ativados enquanto o sistema estiver aberto.' : 'Avisos não autorizados no navegador.', r !== 'granted');
+    });
+    document.addEventListener('pointerdown', iniciarAudio, { once: true });
 
     $('#btn-pin').addEventListener('click', () => { const form = $('#form-pin'); form.reset(); erroForm(form, ''); $('#dlg-pin').showModal(); form.atual.focus(); });
     $('#form-pin').addEventListener('submit', (ev) => {
@@ -511,6 +723,7 @@
     setInterval(() => {
       if (!estado.perfil) return;
       if (Date.now() - estado.ultimaAtividade > CFG.IDLE_MINUTES * 60000) { sair('LOGOUT_INATIVIDADE'); return; }
+      verificarAlertas(true);
       if (estado.aba === 'protocolos' && !$('dialog[open]') && !document.hidden) recarregar();
     }, 30000);
   }

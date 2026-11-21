@@ -7,6 +7,7 @@ psql -v ON_ERROR_STOP=1 -qc "drop database if exists $DB" postgres
 psql -v ON_ERROR_STOP=1 -qc "create database $DB" postgres
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/00_stubs_supabase.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f schema.sql >/dev/null 2>&1
+psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 02_prazos_alertas.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" >/dev/null <<'SQL'
 insert into auth.users (email) values ('portaria@teste.local'),('adm@teste.local'),('juridico@teste.local'),('farmacia@teste.local'),('gestor@teste.local');
 select public.admin_cadastrar_perfil('portaria@teste.local','Maria (Portaria)','portaria',null,'1111');

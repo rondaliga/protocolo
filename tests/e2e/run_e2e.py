@@ -14,6 +14,10 @@ PORTA = 5057
 URL = f"http://127.0.0.1:{PORTA}/"
 SENHA = "Trocar@123"
 problemas = []
+from PIL import Image, ImageDraw
+FOTO = OUT / "envelope.jpg"
+_im = Image.new("RGB", (2400, 1600), (240, 235, 220)); ImageDraw.Draw(_im).rectangle((300, 300, 2100, 1300), outline=(30, 60, 90), width=20)
+_im.save(FOTO, "JPEG", quality=95)
 
 srv = subprocess.Popen([sys.executable, str(AQUI / "mock_supabase.py"), str(PORTA), "protocolo_e2e"],
                        env=dict(os.environ), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -78,6 +82,14 @@ try:
         page.click("#form-novo button[type=submit]"); page.locator("#form-novo .erro").wait_for(state="visible")
         print("CPF:", page.inner_text("#form-novo .erro")); assert "CPF" in page.inner_text("#form-novo .erro")
         page.fill("textarea[name=descricao]", "Ofício nº 123/2026 - 2ª Vara Cível <b>teste-xss</b>")
+        # judicial exige foto
+        page.select_option("#form-novo select[name=tipo]", "judicial")
+        assert page.locator("#lbl-urgente").is_visible()
+        page.fill("#form-novo input[name=pin]", "1111"); page.click("#form-novo button[type=submit]")
+        page.locator("#form-novo .erro").wait_for(state="visible"); print("sem foto:", page.inner_text("#form-novo .erro"))
+        assert "foto" in page.inner_text("#form-novo .erro")
+        page.set_input_files("#inp-foto", str(FOTO)); page.locator("#foto-previa").wait_for(state="visible")
+        page.check("#form-novo input[name=urgente]")
         page.fill("#form-novo input[name=pin]", "9999"); page.click("#form-novo button[type=submit]")
         page.wait_for_timeout(600); print("PIN errado:", page.inner_text("#form-novo .erro")); assert "PIN" in page.inner_text("#form-novo .erro")
         assinar(page, "#pad-novo"); page.fill("#form-novo input[name=pin]", "1111")
@@ -86,7 +98,9 @@ try:
         page.wait_for_timeout(500)
         assert "<b>" not in page.inner_html("#tbody").replace("&lt;b&gt;", ""), "XSS: HTML não escapado"
         assert "teste-xss" in page.inner_text("#tbody")
-        # segundo registro (para filtros)
+        assert "JUDICIAL" in page.inner_text("#tbody") and "URGENTE" in page.inner_text("#tbody")
+        page.screenshot(path=str(OUT / "2b_lista_portaria.png"))
+        # segundo registro (para filtros) — correspondência comum
         page.click("#btn-novo"); page.fill("textarea[name=descricao]", "Carta A.R. Correios"); page.fill("#form-novo input[name=pin]", "1111")
         page.click("#form-novo button[type=submit]"); page.wait_for_timeout(700)
         sair(page)
@@ -94,8 +108,15 @@ try:
         # 2) ADM
         login(page, "adm")
         assert page.locator("#btn-novo").is_hidden()
+        assert page.inner_text("#sino-n") == "2", page.inner_text("#sino-n")        # sino: 2 chegadas aguardando o ADM
+        page.click("#btn-sino"); assert "2026-0001" in page.inner_text("#lista-sino")
+        page.screenshot(path=str(OUT / "2c_sino_adm.png")); page.click("#btn-sino")
         page.click("#tbody tr:has-text('2026-0001')"); page.locator("#dlg-detalhe[open]").wait_for()
+        page.locator("#det-fotos img.foto-det").wait_for(timeout=8000)              # foto carregada do bucket privado
+        page.screenshot(path=str(OUT / "2d_detalhe_judicial.png"))
         page.click("[data-acao=adm]")
+        page.locator("#sel-destino option", has_text="Jurídico").wait_for(state="attached")
+        page.select_option("#sel-destino", label="Jurídico")
         page.fill("#form-confirmar input[name=pin]", "0000"); page.click("#form-confirmar button[type=submit]")
         page.locator("#form-confirmar .erro").wait_for(state="visible"); print("PIN errado ADM:", page.inner_text("#form-confirmar .erro"))
         assinar(page, "#pad-conf"); page.fill("#form-confirmar input[name=pin]", "2222")
@@ -104,13 +125,23 @@ try:
         page.wait_for_timeout(700)
         page.screenshot(path=str(OUT / "4_detalhe_apos_adm.png"))
         assert "Pendente Setor Final" in page.inner_text("#detalhe-corpo")
+        page.click("#detalhe-corpo [data-fechar]")
+        # ajuste de prazo (ADM) na correspondência ainda pendente
+        page.click("#tbody tr:has-text('2026-0002')"); page.click("[data-acao=prazo]")
+        page.fill("#form-prazo input[name=data]", (__import__("datetime").date.today() + __import__("datetime").timedelta(days=30)).isoformat())
+        page.fill("#form-prazo textarea[name=justificativa]", "Prazo de 10 dias informado no ofício"); page.fill("#form-prazo input[name=pin]", "2222")
+        page.click("#form-prazo button[type=submit]"); esperar_toast(page, "Prazo ajustado"); page.wait_for_timeout(700)
+        assert "Histórico de ajustes de prazo" in page.inner_text("#detalhe-corpo")
+        page.screenshot(path=str(OUT / "4b_prazo.png"))
         page.click("#detalhe-corpo [data-fechar]"); sair(page)
 
         # 3) SETOR (Farmácia não vê; Jurídico confirma)
         login(page, "farmacia")
-        page.wait_for_timeout(300); n_far = page.locator("#tbody tr[data-id]").count(); print("farmácia vê:", n_far); assert n_far == 1
+        page.wait_for_timeout(300); n_far = page.locator("#tbody tr[data-id]").count(); print("farmácia vê:", n_far); assert n_far == 0, "setor errado não pode ver"
+        assert page.inner_text("#sino-n") == "0" or page.locator("#sino-n").is_hidden()
         sair(page)
         login(page, "juridico")
+        assert page.inner_text("#sino-n") == "1"
         page.click("#tbody tr[data-id]:first-child"); page.click("[data-acao=setor]")
         assert "Jurídico" in page.inner_text("#conf-setor-info")
         page.fill("#form-confirmar input[name=pin]", "3333"); page.click("#form-confirmar button[type=submit]")
@@ -127,13 +158,17 @@ try:
         page.screenshot(path=str(OUT / "5_dashboard_gestor.png"))
         cards = [page.inner_text(s) for s in ("#k-total", "#k-adm", "#k-setor", "#k-ok")]; print("KPIs:", cards)
         assert cards == ["2", "1", "0", "1"], cards
+        assert page.inner_text("#k-venc") == "0" and page.inner_text("#k-sla") == "0"
+        page.select_option("select[name=ordem]", "prazo"); page.wait_for_timeout(500)
+        assert page.locator("#tbody tr[data-id]").count() == 2
+        page.select_option("select[name=ordem]", "recentes")
         page.click(".k-ok"); page.wait_for_timeout(600)
         assert page.locator("#tbody tr[data-id]").count() == 1 and page.inner_text("#contagem").startswith("1 ")
         page.click("#btn-limpar"); page.wait_for_timeout(500)
         page.fill("input[name=q]", "carta"); page.wait_for_timeout(900)   # busca instantânea (debounce)
         assert page.locator("#tbody tr[data-id]").count() == 1, "busca instantânea"
-        page.fill("input[name=q]", "%"); page.wait_for_timeout(900)
-        assert page.locator("#tbody tr[data-id]").count() == 0, "curinga % deve ser texto"
+        page.fill("input[name=q]", "%"); page.wait_for_timeout(1500)
+        assert page.locator("#tbody tr[data-id]").count() == 0, "curinga: " + page.inner_text("#toast") + page.inner_text("#contagem")
         page.click("#btn-limpar"); page.wait_for_timeout(500)
         # correção de descrição
         page.click("#tbody tr:has-text('Carta A.R.')"); page.click("[data-acao=corrigir]")

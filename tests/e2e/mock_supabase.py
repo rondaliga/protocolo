@@ -16,6 +16,7 @@ DIST = Path(__file__).resolve().parents[2] / "dist"
 SENHA_TESTE = "Trocar@123"
 PSQL = shlex.split(os.environ.get("PSQL", f"psql -d {BANCO} -tA -v ON_ERROR_STOP=1 -q"))
 UUID = re.compile(r"^[0-9a-f-]{36}$")
+ARQUIVOS = {}
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
 
 
@@ -57,6 +58,17 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path.startswith("/storage/v1/object/authenticated/protocolo-fotos/"):
+            uid = self.uid()
+            if not uid: return self.responder(401, {"message": "JWT inválido"})
+            nome = unquote(u.path[len("/storage/v1/object/authenticated/protocolo-fotos/"):])
+            if not re.match(r"^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$", nome): return self.responder(400, {"message": "nome inválido"})
+            try:
+                ok = como(uid, f"select count(*) from storage.objects where bucket_id='protocolo-fotos' and name='{nome}'")
+            except Exception as e:
+                return self.responder(400, {"message": str(e)})
+            if ok != "1": return self.responder(404, {"message": "not found"})   # RLS: sem acesso = não existe
+            return self.responder(200, ARQUIVOS.get(nome, b""), "image/jpeg")
         if u.path.startswith("/rest/v1/"): return self.rest_get(u)
         arq = DIST / (u.path.lstrip("/") or "index.html")
         if arq.is_file() and DIST in arq.resolve().parents:
@@ -81,6 +93,8 @@ class H(BaseHTTPRequestHandler):
                 ids = re.findall(r"\d+", q.get("protocolo_id", [""])[0])
                 r = como(uid, "select coalesce(jsonb_agg(jsonb_build_object('protocolo_id',protocolo_id,'etapa',etapa,'assinatura_png',assinatura_png)),'[]')::text "
                               f"from public.tramites where assinatura_png is not null and protocolo_id in ({','.join(ids) or '0'})")
+            elif tabela == "setores":
+                r = como(uid, "select coalesce(jsonb_agg(jsonb_build_object('id',id,'nome',nome) order by nome),'[]')::text from public.setores where ativo")
             else:
                 return self.responder(404, {"message": "tabela fora do mock"})
             self.responder(200, r)
@@ -102,6 +116,19 @@ class H(BaseHTTPRequestHandler):
                 if not UUID.match(uid): return self.responder(400, {"error_code": "invalid_grant"})
             return self.responder(200, {"access_token": f"mock.{uid}", "refresh_token": f"r.{uid}", "expires_in": 3600, "user": {"id": uid}})
         if u.path == "/auth/v1/logout": return self.responder(204, b"")
+        if u.path.startswith("/storage/v1/object/protocolo-fotos/"):
+            uid = self.uid()
+            if not uid: return self.responder(401, {"message": "JWT inválido"})
+            nome = unquote(u.path[len("/storage/v1/object/protocolo-fotos/"):])
+            n = int(self.headers.get("Content-Length") or 0); dados = self.rfile.read(n)
+            if not re.match(r"^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$", nome) or self.headers.get("Content-Type") != "image/jpeg" or n > 1572864:
+                return self.responder(400, {"message": "arquivo recusado"})
+            try:
+                como(uid, f"insert into storage.objects (bucket_id,name,owner,metadata) values ('protocolo-fotos','{nome}',auth.uid(),'{{\"size\":{n}}}')")
+            except Exception as e:
+                return self.responder(403, {"message": str(e)})
+            ARQUIVOS[nome] = dados
+            return self.responder(200, {"Key": "protocolo-fotos/" + nome})
         m = re.match(r"^/rest/v1/rpc/([a-z_]+)$", u.path)
         if m:
             uid = self.uid()

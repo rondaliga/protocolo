@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- CSP: só scripts/estilos do próprio site e conexões ao Supabase do projeto.
        __SUPABASE_ORIGIN__ é substituído no build (scripts/build-site.sh). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex, nofollow">
   <title>Livro de Protocolo · CECAN - LNRCC</title>
@@ -51,6 +51,19 @@
     </div>
     <div class="usuario">
       <div class="usuario-txt"><strong id="usr-nome"></strong><span id="usr-papel"></span></div>
+      <div class="sino-wrap">
+        <button class="btn mini sino" id="btn-sino" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Pendências e alertas">
+          <span aria-hidden="true">🔔</span> Pendências <span class="sino-n" id="sino-n" hidden>0</span></button>
+        <div class="sino-painel" id="painel-sino" hidden>
+          <h3>Precisam da sua atenção</h3>
+          <ul id="lista-sino"></ul>
+          <p class="vazio-sino" id="vazio-sino">Nenhuma pendência. Tudo em dia. ✔</p>
+          <div class="sino-rodape">
+            <button class="btn mini sec" type="button" id="btn-notif">Ativar avisos no computador</button>
+            <label class="sino-som"><input type="checkbox" id="chk-som" checked> Som</label>
+          </div>
+        </div>
+      </div>
       <button class="btn mini" id="btn-pin" type="button">Alterar PIN</button>
       <button class="btn mini" id="btn-sair" type="button">Sair</button>
     </div>
@@ -64,6 +77,7 @@
   <main>
     <!-- ---------- Protocolos ---------- -->
     <section id="painel-protocolos">
+      <div class="faixa-alerta" id="faixa-alertas" role="alert" hidden></div>
       <div class="intro">
         <div>
           <h2>Recebimento e tramitação de demandas judiciais e correspondências</h2>
@@ -77,6 +91,8 @@
         <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-rot">Pendente ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
         <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-rot">Pendente Setor Final</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
         <button type="button" class="kpi k-ok" data-status="concluido"><span class="kpi-rot">Concluído / Entregue</span><strong id="k-ok">–</strong><small>fluxo completo</small></button>
+        <button type="button" class="kpi k-venc" data-alerta="vencidos"><span class="kpi-rot">Prazo vencido</span><strong id="k-venc">–</strong><small id="k-crit">&nbsp;</small></button>
+        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no SLA</small></button>
       </div>
 
       <form class="filtros" id="form-filtros" role="search">
@@ -89,6 +105,21 @@
             <option value="pendente_adm">Pendente ADM</option>
             <option value="pendente_setor">Pendente Setor Final</option>
             <option value="concluido">Concluído / Entregue</option>
+          </select>
+        </label>
+        <label>Alertas
+          <select name="alerta">
+            <option value="">Todos</option>
+            <option value="abertos">Em andamento</option>
+            <option value="vencidos">Prazo vencido</option>
+            <option value="criticos">Vence em até 2 dias</option>
+            <option value="sla">Parados além do tempo (SLA)</option>
+          </select>
+        </label>
+        <label>Ordenar
+          <select name="ordem">
+            <option value="recentes">Mais recentes</option>
+            <option value="prazo">Prazo mais próximo</option>
           </select>
         </label>
         <label>De <input type="date" name="data_ini"></label>
@@ -106,7 +137,7 @@
       <div class="tabela-wrap">
         <table id="tabela">
           <thead>
-            <tr><th>Nº</th><th>Descrição do documento</th><th>Situação</th>
+            <tr><th>Nº</th><th>Descrição do documento</th><th>Onde está agora</th><th>Prazo</th>
                 <th>1º Receb. · Portaria</th><th>2º Receb. · ADM</th><th>3º Receb. · Super/Setor</th></tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -145,11 +176,27 @@
       Preencher um registro por documento. Informar data e horário em cada etapa e colher a assinatura de quem recebe.
       Evitar registrar informações pessoais ou sigilosas além do necessário para identificar o documento.
     </div>
+    <div class="linha2">
+      <label>Tipo de documento
+        <select name="tipo" required>
+          <option value="correspondencia">Correspondência</option>
+          <option value="judicial">Demanda judicial</option>
+        </select>
+      </label>
+      <label class="chk" id="lbl-urgente" hidden><input type="checkbox" name="urgente"> URGENTE (prazo curto / liminar)</label>
+    </div>
+    <p class="dica" id="dica-tipo"></p>
     <label>Descrição do documento
       <textarea name="descricao" rows="3" maxlength="300" required
         placeholder="Ex.: Ofício nº 123/2026 - 2ª Vara Cível  |  Carta A.R. Correios"></textarea>
       <small class="contador"><span id="cont-desc">0</span>/300</small>
     </label>
+    <fieldset class="foto-box">
+      <legend>Foto do envelope / capa <span id="foto-obrig"></span></legend>
+      <input type="file" name="foto" id="inp-foto" accept="image/*" capture="environment">
+      <img id="foto-previa" alt="Prévia da foto" hidden>
+      <small class="dica">Fotografe a capa/envelope no ato da chegada. Não fotografe o conteúdo do documento.</small>
+    </fieldset>
     <p class="dica">Nº do protocolo, data e horário são gerados pelo servidor e não podem ser alterados.</p>
     <fieldset class="assinatura">
       <legend>Assinatura / ciência de quem recebe</legend>
@@ -179,6 +226,9 @@
     <h2 id="conf-titulo"></h2>
     <div class="resumo-doc"><strong id="conf-numero"></strong><span id="conf-desc"></span></div>
     <p class="dica" id="conf-setor-info" hidden></p>
+    <label id="lbl-destino" hidden>Setor de destino (para onde o documento vai agora)
+      <select name="destino" id="sel-destino"></select>
+    </label>
     <fieldset class="assinatura">
       <legend>Assinatura / ciência de quem recebe</legend>
       <label>PIN de <strong class="eu"></strong>
@@ -219,6 +269,30 @@
     <div class="modal-acoes">
       <button type="button" class="btn sec" data-fechar>Cancelar</button>
       <button type="submit" class="btn primario">Registrar correção</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: AJUSTAR PRAZO ============ -->
+<dialog id="dlg-prazo">
+  <form id="form-prazo" class="modal-corpo" autocomplete="off">
+    <h2>Ajustar prazo</h2>
+    <p class="dica">Use quando o prazo real constar no documento. O prazo anterior, a justificativa e o responsável ficam registrados.</p>
+    <div class="resumo-doc"><strong id="prazo-numero"></strong><span id="prazo-atual"></span></div>
+    <label>Novo prazo (data limite)
+      <input type="date" name="data" required>
+    </label>
+    <label>Justificativa (obrigatória)
+      <textarea name="justificativa" rows="2" minlength="10" maxlength="500" required
+        placeholder="Ex.: prazo de 10 dias informado no ofício"></textarea>
+    </label>
+    <label>PIN de <strong class="eu"></strong>
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Salvar prazo</button>
     </div>
   </form>
 </dialog>
