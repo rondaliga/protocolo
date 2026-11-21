@@ -1,0 +1,38 @@
+name: Avisos por e-mail (prazos e tempos máximos)
+
+on:
+  schedule:
+    # A cada 15 min, de seg a sex, das 08h às 18h (horário de Fortaleza = UTC-3).
+    # O GitHub pode atrasar execuções agendadas em horários de pico e desativa o agendamento
+    # após 60 dias sem atividade no repositório (basta fazer qualquer commit ou rodar manualmente).
+    - cron: "*/15 11-21 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notificacoes
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verificar prazos e enviar e-mails
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          INTEGRACAO_SEGREDO: ${{ secrets.INTEGRACAO_SEGREDO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ vars.SMTP_FROM || secrets.SMTP_USER }}
+          SMTP_SSL: ${{ vars.SMTP_SSL || 'false' }}
+        run: python3 scripts/enviar_notificacoes.py
