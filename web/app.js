@@ -30,7 +30,8 @@
     + 'Correios, mantendo o histórico de entrega entre os setores responsáveis.';
 
   const STATUS = { pendente_adm: 'Pendente ADM', pendente_setor: 'Pendente Setor Final', concluido: 'Concluído / Entregue' };
-  const PAPEL = { portaria: 'Portaria', adm: 'Administração (ADM)', super_setor: 'Super/Setor', gestor: 'Gestão / Auditoria' };
+  const PAPEL = { portaria: 'Portaria', adm: 'Administração (ADM)', super_setor: 'Super/Setor', gestor: 'Gestor (acesso total)' };
+  const ASSIN_ROTULO = { pin: 'Ciência por PIN', pin_canvas: 'Assinatura desenhada', pin_digitada: 'Assinatura digitada' };
   const ETAPA_NOME = { 1: '1ª Etapa — Portaria', 2: '2ª Etapa — ADM', 3: '3ª Etapa — Super/Setor' };
   const LIMITE_LIVRO_IMPRESSO = 300;
 
@@ -129,21 +130,9 @@
   const chip = (s) => `<span class="chip ${esc(s)}">${esc(STATUS[s] || s)}</span>`;
   const pngSeguro = (s) => (typeof s === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(s) ? s : null);
 
-  // ------------------------------------------------------------------ quadro de assinatura (canvas)
-  class Pad {
-    constructor(c) {
-      this.c = c; this.x = c.getContext('2d'); this.vazio = true; this.on = false;
-      Object.assign(this.x, { lineWidth: 2.4, lineCap: 'round', lineJoin: 'round', strokeStyle: '#111' });
-      c.addEventListener('pointerdown', (e) => { e.preventDefault(); c.setPointerCapture(e.pointerId); this.on = true;
-        const p = this.p(e); this.x.beginPath(); this.x.moveTo(p.x, p.y); this.x.lineTo(p.x + .1, p.y + .1); this.x.stroke(); this.vazio = false; });
-      c.addEventListener('pointermove', (e) => { if (!this.on) return; e.preventDefault(); const p = this.p(e); this.x.lineTo(p.x, p.y); this.x.stroke(); });
-      ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => c.addEventListener(ev, () => { this.on = false; }));
-    }
-    p(e) { const r = this.c.getBoundingClientRect(); return { x: (e.clientX - r.left) * this.c.width / r.width, y: (e.clientY - r.top) * this.c.height / r.height }; }
-    limpar() { this.x.clearRect(0, 0, this.c.width, this.c.height); this.vazio = true; }
-    png() { return this.vazio ? null : this.c.toDataURL('image/png'); }
-  }
-  const pads = {};
+  // ------------------------------------------------------------------ assinatura (digitada / desenhada / só PIN)
+  const assinaturas = {};            // 'novo' e 'conf' (ver assinatura.js)
+  let painelMod = null;              // trilha + painel de controle (painel.js)
 
   // ------------------------------------------------------------------ sessão / telas
   function mostrar(qual) {
@@ -166,10 +155,11 @@
   }
 
   async function carregarPerfil() {
-    const linhas = await rest(`perfis?select=nome,papel,setor_id,setores(nome)&user_id=eq.${encodeURIComponent(estado.sessao.uid)}`);
+    const linhas = await rest(`perfis?select=nome,papel,setor_id,deve_trocar_senha,deve_trocar_pin,setores(nome)&user_id=eq.${encodeURIComponent(estado.sessao.uid)}`);
     if (!linhas || !linhas.length) throw new ErroApi('Seu usuário não possui perfil ativo neste sistema. Procure o administrador.', 403);
     const p = linhas[0];
-    estado.perfil = { nome: p.nome, papel: p.papel, setor_id: p.setor_id, setor: p.setores && p.setores.nome };
+    estado.perfil = { nome: p.nome, papel: p.papel, setor_id: p.setor_id, setor: p.setores && p.setores.nome,
+                      deveTrocarSenha: !!p.deve_trocar_senha, deveTrocarPin: !!p.deve_trocar_pin };
   }
 
   async function iniciarApp(registrarLogin) {
@@ -178,15 +168,17 @@
     const { perfil } = estado;
     $('#usr-nome').textContent = perfil.nome;
     $('#usr-papel').textContent = PAPEL[perfil.papel] + (perfil.setor ? ` · ${perfil.setor}` : '');
-    $('#btn-novo').hidden = perfil.papel !== 'portaria';
+    $('#btn-novo').hidden = !['portaria', 'gestor'].includes(perfil.papel);
     $('#btn-aba-auditoria').hidden = perfil.papel !== 'gestor';
+    $('#btn-aba-painel').hidden = perfil.papel !== 'gestor';
     $$('.eu').forEach((e) => { e.textContent = perfil.nome; });
-    $('.sino-wrap').hidden = perfil.papel === 'portaria'; estado.alertasVistos = null;
+    $('.sino-wrap').hidden = perfil.papel === 'portaria'; estado.alertasVistos = null; estado.setores = null;
     estado.ultimaAtividade = Date.now();
     mostrar('app');
     trocarAba('protocolos');
     await recarregar();
     await verificarAlertas(false);
+    if (perfil.deveTrocarSenha || perfil.deveTrocarPin) abrirConta(true);
   }
 
   function trocarAba(n) {
@@ -194,7 +186,9 @@
     $$('.aba').forEach((b) => b.classList.toggle('ativa', b.dataset.aba === n));
     $('#painel-protocolos').hidden = n !== 'protocolos';
     $('#painel-auditoria').hidden = n !== 'auditoria';
-    if (n === 'auditoria') carregarAuditoria();
+    $('#painel-controle').hidden = n !== 'painel';
+    if (n === 'auditoria') painelMod.abrirAuditoria();
+    if (n === 'painel') painelMod.abrirPainel();
   }
 
   // ------------------------------------------------------------------ dashboard e tabela
@@ -270,14 +264,14 @@
 
   function renderDetalhe(p) {
     const papel = estado.perfil.papel;
-    const podeAdm = papel === 'adm' && p.status === 'pendente_adm';
-    const podeSetor = papel === 'super_setor' && p.status === 'pendente_setor';
+    const podeAdm = ['adm', 'gestor'].includes(papel) && p.status === 'pendente_adm';
+    const podeSetor = ['super_setor', 'gestor'].includes(papel) && p.status === 'pendente_setor';
     const podeCorrigir = ['portaria', 'adm', 'gestor'].includes(papel);
     const podePrazo = ['adm', 'gestor'].includes(papel) && p.status !== 'concluido';
     const linhas = etapasCompletas(p).map((e) => {
       if (!e.feito) return `<li class="pendente"><div><b>${esc(e.nome)}</b><small>Aguardando recebimento</small></div><div></div></li>`;
       const png = pngSeguro(e.assinatura_png);
-      const ass = png ? `<img class="ass-img" src="${png}" alt="Assinatura de ${esc(e.usuario)}">` : '<span class="pin-ok">✔ Ciência por PIN</span>';
+      const ass = png ? `<img class="ass-img" src="${png}" alt="Assinatura de ${esc(e.usuario)}"><small class="et-sub">${esc(ASSIN_ROTULO[e.assinatura_tipo] || '')}</small>` : '<span class="pin-ok">✔ Ciência por PIN</span>';
       return `<li class="feito"><div><b>${esc(e.nome)}</b>
         <small>${data(e.recebido_em)} às ${hora(e.recebido_em, true)} · ${esc(e.usuario)}</small>
         ${e.setor ? `<small>Setor final: <strong>${esc(e.setor)}</strong></small>` : ''}
@@ -307,7 +301,7 @@
         ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
         <button class="btn" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
         ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm">Confirmar recebimento — ADM</button>' : ''}
-        ${podeSetor ? '<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — Setor</button>' : ''}
+        ${podeSetor ? `<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — ${papel === 'gestor' ? esc(p.setor_destino_nome || 'Setor') : 'Setor'}</button>` : ''}
       </div>`;
     carregarFotos(p);
   }
@@ -336,17 +330,14 @@
   }
 
   // ------------------------------------------------------------------ modais de ação
-  function prepararAssinatura(form, padId) {
-    $('[data-dica-assinatura]', form).textContent = CFG.ASSINATURA_OBRIGATORIA
-      ? 'O desenho da assinatura é obrigatório. Use o mouse, o dedo ou a caneta no quadro.'
-      : 'Opcional: assine no quadro. O PIN é sempre obrigatório e vale como ciência formal.';
-    pads[padId].limpar();
+  function montarAssinaturas() {
+    $$('[data-assinatura]').forEach((fs) => {
+      assinaturas[fs.dataset.assinatura] = window.Assinatura.montar(fs, { obrigatoria: !!CFG.ASSINATURA_OBRIGATORIA });
+    });
   }
-  function assinaturaDe(form, padId) {
-    const png = pads[padId].png();
-    if (CFG.ASSINATURA_OBRIGATORIA && !png) throw new Error('Assine no quadro antes de confirmar.');
-    return png;
-  }
+  const prepararAssinatura = (chave) => assinaturas[chave].reiniciar(estado.perfil.nome);
+  const assinaturaDe = (chave) => assinaturas[chave].obter();      // { png, modo } — lança Error se faltar
+
   async function enviar(form, acao, aoSucesso) {
     const btn = $('button[type=submit]', form); btn.disabled = true; erroForm(form, '');
     try {
@@ -360,7 +351,7 @@
   function abrirNovo() {
     const f = $('#form-novo'); f.reset(); $('#cont-desc').textContent = '0'; erroForm(f, '');
     limparFoto(); ajustarTipo();
-    prepararAssinatura(f, 'pad-novo'); $('#dlg-novo').showModal(); f.descricao.focus();
+    prepararAssinatura('novo'); $('#dlg-novo').showModal(); f.descricao.focus();
   }
   const fotoObrigatoria = () => $('#form-novo').tipo.value === 'judicial';
   function ajustarTipo() {
@@ -410,14 +401,18 @@
     $('#conf-titulo').textContent = etapa === 2 ? '2º recebimento — Administração (ADM)' : '3º recebimento — Super/Setor';
     $('#conf-numero').textContent = p.numero; $('#conf-desc').textContent = p.descricao;
     const info = $('#conf-setor-info'); info.hidden = etapa !== 3;
-    if (etapa === 3) info.textContent = `Setor final de destino: ${estado.perfil.setor} (definido pelo seu perfil).`;
+    if (etapa === 3) {
+      info.textContent = estado.perfil.papel === 'gestor'
+        ? `Você está confirmando em nome do setor de destino: ${p.setor_destino_nome || '—'} (acesso total do gestor; fica registrado na trilha).`
+        : `Setor final de destino: ${estado.perfil.setor} (definido pelo seu perfil).`;
+    }
     const lbl = $('#lbl-destino'); lbl.hidden = etapa !== 2;
     if (etapa === 2) {
       carregarSetores().then((l) => {
         f.destino.innerHTML = '<option value="">Selecione o setor…</option>' + l.map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('');
       }).catch((e) => erroForm(f, e.message));
     }
-    prepararAssinatura(f, 'pad-conf'); $('#dlg-confirmar').showModal(); f.pin.focus();
+    prepararAssinatura('conf'); $('#dlg-confirmar').showModal(); f.pin.focus();
   }
 
   function abrirPrazo() {
@@ -434,18 +429,6 @@
     f.reset(); erroForm(f, ''); f.dataset.id = String(p.id);
     $('#corr-numero').textContent = p.numero; $('#corr-atual').textContent = p.descricao;
     f.descricao_nova.value = p.descricao; $('#dlg-correcao').showModal(); f.descricao_nova.focus();
-  }
-
-  // ------------------------------------------------------------------ auditoria
-  async function carregarAuditoria() {
-    $('#resultado-verificacao').textContent = '';
-    try {
-      const l = await rest('auditoria?select=id,ocorrido_em,usuario_nome,acao,protocolo_id,detalhes&order=id.desc&limit=300');
-      $('#tbody-audit').innerHTML = l.map((x) => `<tr><td>${data(x.ocorrido_em)} ${hora(x.ocorrido_em, true)}</td>
-        <td>${esc(x.usuario_nome || '—')}</td><td><strong>${esc(x.acao)}</strong></td>
-        <td>${esc((x.detalhes && x.detalhes.numero) || x.protocolo_id || '')}</td>
-        <td class="detalhes">${esc(JSON.stringify(x.detalhes || {}))}</td></tr>`).join('');
-    } catch (e) { toast(e.message, true); }
   }
 
   // ------------------------------------------------------------------ IMPRESSÃO (livro e ficha)
@@ -541,6 +524,54 @@
     } catch (e) { toast(e.message, true); }
   }
 
+  // ------------------------------------------------------------------ conta: troca de senha / primeiro acesso
+  function abrirConta(obrigatoria) {
+    const f = $('#form-conta'), p = estado.perfil;
+    estado.contaObrigatoria = obrigatoria; f.reset(); erroForm(f, '');
+    const senha = !obrigatoria || p.deveTrocarSenha, pin = obrigatoria && p.deveTrocarPin;
+    $('#conta-bloco-senha').hidden = !senha; $('#conta-bloco-pin').hidden = !pin;
+    $('#conta-titulo').textContent = obrigatoria ? 'Primeiro acesso: defina suas credenciais' : 'Alterar minha senha';
+    $('#conta-info').textContent = obrigatoria
+      ? 'O gestor lhe entregou uma senha e um PIN provisórios. Por segurança, escolha agora os seus próprios.' : 'Escolha uma nova senha de acesso.';
+    $('#conta-cancelar').hidden = obrigatoria;
+    $('#dlg-conta').showModal();
+  }
+  async function enviarConta(ev) {
+    ev.preventDefault();
+    const f = ev.target, p = estado.perfil, obrigatoria = estado.contaObrigatoria;
+    const querSenha = !$('#conta-bloco-senha').hidden, querPin = !$('#conta-bloco-pin').hidden;
+    if (querSenha) {
+      if (f.senha.value !== f.senha2.value) { erroForm(f, 'As senhas não conferem.'); return; }
+      if (f.senha.value.length < 10 || !/[A-Za-z]/.test(f.senha.value) || !/\d/.test(f.senha.value)) { erroForm(f, 'A senha deve ter 10 caracteres ou mais, com letras e números.'); return; }
+    }
+    if (querPin) {
+      if (!/^\d{4,6}$/.test(f.pin_novo.value)) { erroForm(f, 'O novo PIN deve ter de 4 a 6 dígitos numéricos.'); return; }
+      if (f.pin_novo.value !== f.pin_novo2.value) { erroForm(f, 'Os PINs não conferem.'); return; }
+    }
+    await enviar(f, async () => {
+      if (querSenha) {
+        const token = await garantirToken();
+        const resp = await fetch(`${BASE}/auth/v1/user`, { method: 'PUT', headers: { apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: f.senha.value }) });
+        if (!resp.ok) {
+          const j = await resp.json().catch(() => ({}));
+          throw new Error(/same|diferente/i.test(j.msg || j.message || '') ? 'A nova senha deve ser diferente da atual.' : (j.msg || j.message || 'Não foi possível alterar a senha.'));
+        }
+        await rpc('confirmar_troca_senha'); p.deveTrocarSenha = false;
+        $('#conta-bloco-senha').hidden = true;                   // se o PIN falhar, só ele é pedido de novo
+      }
+      if (querPin) {
+        const r = await rpc('alterar_meu_pin', { p_atual: f.pin_atual.value, p_novo: f.pin_novo.value });
+        if (r && r.ok === false) throw new Error(r.erro || 'PIN provisório incorreto.');
+        p.deveTrocarPin = false;
+      }
+      return { ok: true };
+    }, async () => {
+      estado.contaObrigatoria = false; $('#dlg-conta').close();
+      toast(obrigatoria ? 'Credenciais definidas. Bem-vindo(a)!' : 'Senha alterada com sucesso.');
+    });
+  }
+
   // ------------------------------------------------------------------ alertas (sino, som, aviso do navegador)
   // Importante: só funcionam com o sistema aberto no navegador. Fora dele, valem os e-mails.
   let audioCtx = null;
@@ -622,7 +653,6 @@
     });
     document.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-fechar]')) ev.target.closest('dialog').close();
-      const l = ev.target.closest('[data-limpar]'); if (l) pads[l.dataset.limpar].limpar();
     });
     $$('dialog').forEach((d) => d.addEventListener('close', () => { $$('form', d).forEach((x) => x.reset()); }));
 
@@ -630,25 +660,24 @@
     $('#btn-novo').addEventListener('click', abrirNovo);
     $('#form-novo').tipo.addEventListener('change', ajustarTipo);
     $('#inp-foto').addEventListener('change', async (ev) => {
-      const form = $('#form-novo'); limparFoto2(ev.target.files[0]);
-      async function limparFoto2(arq) {
-        estado.fotoBlob = null; if (!arq) return;
-        try {
-          erroForm(form, ''); const blob = await prepararFoto(arq);
-          estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
-          const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false;
-        } catch (e) { erroForm(form, e.message); ev.target.value = ''; }
-      }
+      const form = $('#form-novo'), arq = ev.target.files[0];
+      estado.fotoBlob = null; $('#foto-previa').hidden = true; if (!arq) return;
+      try {
+        erroForm(form, ''); const blob = await prepararFoto(arq);
+        if (estado.fotoUrl) URL.revokeObjectURL(estado.fotoUrl);
+        estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
+        const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false;
+      } catch (e) { erroForm(form, e.message); ev.target.value = ''; }
     });
     $('#form-novo').descricao.addEventListener('input', (ev) => { $('#cont-desc').textContent = ev.target.value.length; });
 
     $('#form-novo').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target;
-      let png; try { png = assinaturaDe(form, 'pad-novo'); } catch (e) { erroForm(form, e.message); return; }
+      let ass; try { ass = assinaturaDe('novo'); } catch (e) { erroForm(form, e.message); return; }
       if (fotoObrigatoria() && !estado.fotoBlob) { erroForm(form, 'Demandas judiciais exigem a foto do envelope/capa.'); return; }
       enviar(form, async () => {
         const caminho = estado.fotoBlob ? await enviarFoto(estado.fotoBlob) : null;
-        return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: png,
+        return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: ass.png, p_assinatura_modo: ass.modo,
           p_tipo: form.tipo.value, p_urgente: form.urgente.checked, p_foto_caminho: caminho });
       }, async (r) => {
         $('#dlg-novo').close(); limparFoto();
@@ -658,10 +687,10 @@
 
     $('#form-confirmar').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target, etapa = Number(form.dataset.etapa);
-      let png; try { png = assinaturaDe(form, 'pad-conf'); } catch (e) { erroForm(form, e.message); return; }
+      let ass; try { ass = assinaturaDe('conf'); } catch (e) { erroForm(form, e.message); return; }
       if (etapa === 2 && !form.destino.value) { erroForm(form, 'Selecione o setor de destino.'); return; }
-      enviar(form, () => rpc('confirmar_etapa', { p_protocolo_id: Number(form.dataset.id), p_etapa: etapa, p_pin: form.pin.value, p_assinatura: png,
-        p_setor_destino_id: etapa === 2 ? Number(form.destino.value) : null }), async (r) => {
+      enviar(form, () => rpc('confirmar_etapa', { p_protocolo_id: Number(form.dataset.id), p_etapa: etapa, p_pin: form.pin.value, p_assinatura: ass.png,
+        p_assinatura_modo: ass.modo, p_setor_destino_id: etapa === 2 ? Number(form.destino.value) : null }), async (r) => {
         $('#dlg-confirmar').close();
         toast(etapa === 2 ? `${r.numero}: recebimento do ADM registrado e setor de destino avisado.` : `${r.numero}: entrega concluída no setor.`);
         await abrirDetalhe(form.dataset.id); await recarregar();
@@ -701,6 +730,9 @@
     });
     document.addEventListener('pointerdown', iniciarAudio, { once: true });
 
+    $('#btn-senha').addEventListener('click', () => abrirConta(false));
+    $('#dlg-conta').addEventListener('cancel', (ev) => { if (estado.contaObrigatoria) ev.preventDefault(); });   // Esc não pula o primeiro acesso
+    $('#form-conta').addEventListener('submit', enviarConta);
     $('#btn-pin').addEventListener('click', () => { const form = $('#form-pin'); form.reset(); erroForm(form, ''); $('#dlg-pin').showModal(); form.atual.focus(); });
     $('#form-pin').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target;
@@ -732,8 +764,13 @@
   async function iniciar() {
     $$('[data-unidade]').forEach((e) => { e.textContent = `Unidade/Instituição: ${CFG.UNIDADE}`; });
     if (!CONFIG_OK) { mostrar('config'); return; }
-    pads['pad-novo'] = new Pad($('#pad-novo')); pads['pad-conf'] = new Pad($('#pad-conf'));
-    ligarEventos();
+    montarAssinaturas();
+    painelMod = window.criarPainel(Object.freeze({
+      $, $$, esc, data, hora, rpc, toast, erroForm, enviar, abrirDetalhe, imprimir, cabecalhoImpressao, rodapeImpressao,
+      estado: () => estado, limparSetores: () => { estado.setores = null; },
+      enderecoSistema: () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`),
+    }));
+    ligarEventos(); painelMod.ligar();
     const img = new Image();                              // logotipo opcional: web/assets/logo.png
     img.onload = () => { estado.logo = true; $$('img.logo').forEach((i) => { i.src = 'assets/logo.png'; i.hidden = false; }); };
     img.src = 'assets/logo.png';

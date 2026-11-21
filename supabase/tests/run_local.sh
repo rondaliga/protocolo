@@ -9,5 +9,6 @@ psql -v ON_ERROR_STOP=1 -qc "create database $DB" postgres
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 00_stubs_supabase.sql
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../schema.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../02_prazos_alertas.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../03_painel_gestor.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 02_testes.sql 2>&1 | sed -E 's/^psql:[^ ]+ [0-9]+: //'
 psql -qc "drop database $DB" postgres

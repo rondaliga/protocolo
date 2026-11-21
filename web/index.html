@@ -64,6 +64,7 @@
           </div>
         </div>
       </div>
+      <button class="btn mini" id="btn-senha" type="button">Alterar senha</button>
       <button class="btn mini" id="btn-pin" type="button">Alterar PIN</button>
       <button class="btn mini" id="btn-sair" type="button">Sair</button>
     </div>
@@ -71,7 +72,8 @@
 
   <nav class="abas" id="abas" aria-label="Seções">
     <button type="button" class="aba ativa" data-aba="protocolos">Protocolos</button>
-    <button type="button" class="aba" data-aba="auditoria" id="btn-aba-auditoria" hidden>Auditoria</button>
+    <button type="button" class="aba" data-aba="auditoria" id="btn-aba-auditoria" hidden>Trilha de auditoria</button>
+    <button type="button" class="aba" data-aba="painel" id="btn-aba-painel" hidden>Painel de controle</button>
   </nav>
 
   <main>
@@ -151,17 +153,114 @@
       </div>
     </section>
 
-    <!-- ---------- Auditoria ---------- -->
+    <!-- ---------- Trilha de auditoria ---------- -->
     <section id="painel-auditoria" hidden>
+      <form id="form-aud" class="filtros" autocomplete="off">
+        <label class="busca">Buscar
+          <input type="search" name="q" placeholder="Nº, usuário, ação ou palavra dos detalhes" maxlength="100">
+        </label>
+        <label>Tipo de evento
+          <select name="categoria">
+            <option value="">Todos</option>
+            <option value="protocolo">Registro de protocolo</option>
+            <option value="tramitacao">Recebimentos (etapas)</option>
+            <option value="correcao">Correções de descrição</option>
+            <option value="prazo">Prazos e alertas</option>
+            <option value="acesso">Acessos (login/PIN)</option>
+            <option value="impressao">Impressões</option>
+            <option value="seguranca">Segurança (senha/PIN)</option>
+            <option value="administracao">Administração</option>
+          </select>
+        </label>
+        <label>Usuário <input type="text" name="usuario" maxlength="100" placeholder="Nome"></label>
+        <label>De <input type="date" name="data_ini"></label>
+        <label>Até <input type="date" name="data_fim"></label>
+        <button type="button" class="btn sec" id="aud-limpar">Limpar</button>
+      </form>
       <div class="barra">
         <button class="btn primario" type="button" id="btn-verificar">Verificar integridade da trilha</button>
+        <button class="btn sec" type="button" id="aud-csv">Exportar CSV</button>
+        <button class="btn sec" type="button" id="aud-imprimir">Imprimir / PDF</button>
         <span id="resultado-verificacao" class="verificacao" role="status"></span>
+        <span class="contagem" id="aud-contagem" role="status"></span>
       </div>
       <div class="tabela-wrap">
-        <table>
-          <thead><tr><th>Data/hora</th><th>Usuário</th><th>Ação</th><th>Protocolo</th><th>Detalhes</th></tr></thead>
+        <table class="tabela-aud">
+          <thead><tr><th>Data / hora</th><th>Tipo</th><th>Usuário</th><th>Ação</th><th>Protocolo</th><th>O que aconteceu</th></tr></thead>
           <tbody id="tbody-audit"></tbody>
         </table>
+      </div>
+      <div class="paginacao">
+        <button class="btn sec" type="button" id="aud-ant">‹ Anterior</button>
+        <span id="aud-pg"></span>
+        <button class="btn sec" type="button" id="aud-prox">Próxima ›</button>
+      </div>
+    </section>
+
+    <!-- ---------- Painel de controle (somente gestor) ---------- -->
+    <section id="painel-controle" hidden>
+      <nav class="subabas" id="subabas" aria-label="Painel de controle">
+        <button type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
+        <button type="button" class="subaba" data-sub="setores">Setores</button>
+        <button type="button" class="subaba" data-sub="parametros">Prazos e regras</button>
+        <button type="button" class="subaba" data-sub="feriados">Feriados</button>
+        <button type="button" class="subaba" data-sub="sistema">Sistema</button>
+      </nav>
+
+      <div id="sub-usuarios" class="sub">
+        <div class="barra">
+          <button class="btn primario" type="button" id="usr-novo">+ Novo usuário</button>
+          <input type="search" id="usr-busca" placeholder="Buscar por nome ou e-mail" maxlength="100" aria-label="Buscar usuário">
+          <select id="usr-filtro-papel" aria-label="Filtrar por papel">
+            <option value="">Todos os papéis</option><option value="portaria">Portaria</option><option value="adm">ADM</option>
+            <option value="super_setor">Super/Setor</option><option value="gestor">Gestor</option>
+          </select>
+          <select id="usr-filtro-ativo" aria-label="Filtrar por situação">
+            <option value="ativos">Somente ativos</option><option value="inativos">Somente inativos</option><option value="">Todos</option>
+          </select>
+          <span class="contagem" id="usr-contagem"></span>
+        </div>
+        <div class="tabela-wrap">
+          <table class="tabela-usr">
+            <thead><tr><th>Usuário</th><th>Papel / setor</th><th>Situação</th><th>Último acesso</th><th>Ações</th></tr></thead>
+            <tbody id="tbody-usr"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="sub-setores" class="sub" hidden>
+        <div class="barra"><button class="btn primario" type="button" id="set-novo">+ Novo setor</button></div>
+        <div class="tabela-wrap">
+          <table>
+            <thead><tr><th>Setor</th><th>Usuários ativos</th><th>Situação</th><th>Ações</th></tr></thead>
+            <tbody id="tbody-set"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="sub-parametros" class="sub" hidden>
+        <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
+        <div id="lista-param" class="lista-param"></div>
+      </div>
+
+      <div id="sub-feriados" class="sub" hidden>
+        <form id="form-feriado" class="barra" autocomplete="off">
+          <label>Data <input type="date" name="data" required></label>
+          <label>Descrição <input type="text" name="descricao" maxlength="80" required placeholder="Ex.: Carnaval"></label>
+          <button class="btn primario" type="submit">Adicionar feriado</button>
+          <span class="erro" role="alert" hidden></span>
+        </form>
+        <div class="tabela-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Descrição</th><th>Ações</th></tr></thead>
+            <tbody id="tbody-fer"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="sub-sistema" class="sub" hidden>
+        <div class="kpis" id="sistema-kpis"></div>
+        <p class="dica" id="sistema-aviso"></p>
       </div>
     </section>
   </main>
@@ -198,17 +297,7 @@
       <small class="dica">Fotografe a capa/envelope no ato da chegada. Não fotografe o conteúdo do documento.</small>
     </fieldset>
     <p class="dica">Nº do protocolo, data e horário são gerados pelo servidor e não podem ser alterados.</p>
-    <fieldset class="assinatura">
-      <legend>Assinatura / ciência de quem recebe</legend>
-      <label>PIN de <strong class="eu"></strong>
-        <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
-      </label>
-      <div class="pad-wrap">
-        <canvas id="pad-novo" width="480" height="150" aria-label="Quadro de assinatura"></canvas>
-        <button type="button" class="btn sec mini" data-limpar="pad-novo">Limpar assinatura</button>
-      </div>
-      <small class="dica" data-dica-assinatura></small>
-    </fieldset>
+    <fieldset data-assinatura="novo"></fieldset>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
       <button type="button" class="btn sec" data-fechar>Cancelar</button>
@@ -229,17 +318,7 @@
     <label id="lbl-destino" hidden>Setor de destino (para onde o documento vai agora)
       <select name="destino" id="sel-destino"></select>
     </label>
-    <fieldset class="assinatura">
-      <legend>Assinatura / ciência de quem recebe</legend>
-      <label>PIN de <strong class="eu"></strong>
-        <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
-      </label>
-      <div class="pad-wrap">
-        <canvas id="pad-conf" width="480" height="150" aria-label="Quadro de assinatura"></canvas>
-        <button type="button" class="btn sec mini" data-limpar="pad-conf">Limpar assinatura</button>
-      </div>
-      <small class="dica" data-dica-assinatura></small>
-    </fieldset>
+    <fieldset data-assinatura="conf"></fieldset>
     <p class="dica">Data e horário do recebimento serão registrados automaticamente pelo servidor.</p>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
@@ -316,12 +395,150 @@
   </form>
 </dialog>
 
+
+<!-- ============ MODAL: USUÁRIO (criar / editar) ============ -->
+<dialog id="dlg-usuario">
+  <form id="form-usuario" class="modal-corpo" autocomplete="off">
+    <h2 id="usr-titulo">Novo usuário</h2>
+    <label>E-mail (será o login)
+      <input type="email" name="email" maxlength="200" required autocomplete="off">
+    </label>
+    <label>Nome completo
+      <input type="text" name="nome" maxlength="120" required autocomplete="off">
+    </label>
+    <div class="linha2">
+      <label>Papel
+        <select name="papel" required>
+          <option value="portaria">Portaria (1ª etapa)</option>
+          <option value="adm">Administração — ADM (2ª etapa)</option>
+          <option value="super_setor">Super/Setor (3ª etapa)</option>
+          <option value="gestor">Gestor (acesso total)</option>
+        </select>
+      </label>
+      <label id="lbl-usr-setor" hidden>Setor
+        <select name="setor"></select>
+      </label>
+    </div>
+    <div id="bloco-credenciais">
+      <label>Senha provisória
+        <span class="com-botao"><input type="text" name="senha" maxlength="72" autocomplete="off" spellcheck="false"><button type="button" class="btn sec mini" data-gerar="senha">Gerar</button></span>
+        <small class="dica" id="dica-senha">Mínimo de 10 caracteres, com letras e números. O usuário será obrigado a trocá-la no primeiro acesso.</small>
+      </label>
+      <label>PIN provisório (4 a 6 dígitos)
+        <span class="com-botao"><input type="text" name="pin_novo" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off"><button type="button" class="btn sec mini" data-gerar="pin">Gerar</button></span>
+      </label>
+    </div>
+    <label>Seu PIN de gestor (confirma a ação)
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Salvar usuário</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: REDEFINIR SENHA / PIN ============ -->
+<dialog id="dlg-reset">
+  <form id="form-reset" class="modal-corpo" autocomplete="off">
+    <h2 id="reset-titulo"></h2>
+    <p class="dica" id="reset-info"></p>
+    <label><span id="reset-rotulo"></span>
+      <span class="com-botao"><input type="text" name="valor" maxlength="72" required autocomplete="off" spellcheck="false"><button type="button" class="btn sec mini" id="reset-gerar">Gerar</button></span>
+    </label>
+    <label>Seu PIN de gestor (confirma a ação)
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: ATIVAR / DESATIVAR ============ -->
+<dialog id="dlg-ativo">
+  <form id="form-ativo" class="modal-corpo" autocomplete="off">
+    <h2 id="ativo-titulo"></h2>
+    <p class="dica" id="ativo-info"></p>
+    <label>Seu PIN de gestor (confirma a ação)
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: CREDENCIAIS GERADAS (exibidas uma única vez) ============ -->
+<dialog id="dlg-credencial">
+  <div class="modal-corpo">
+    <h2>Entregue os dados de acesso</h2>
+    <p class="dica">Estas informações <strong>não serão exibidas novamente</strong>. Entregue-as pessoalmente ou por um canal seguro.
+      No primeiro acesso o usuário será obrigado a trocar a senha e o PIN.</p>
+    <dl class="credencial" id="cred-dados"></dl>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="cred-copiar">Copiar</button>
+      <button type="button" class="btn primario" data-fechar>Já anotei / entreguei</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ MODAL: SETOR ============ -->
+<dialog id="dlg-setor">
+  <form id="form-setor" class="modal-corpo" autocomplete="off">
+    <h2 id="setor-titulo">Setor</h2>
+    <label>Nome do setor <input type="text" name="nome" maxlength="80" required></label>
+    <label class="chk neutro"><input type="checkbox" name="ativo" checked> Setor ativo (aparece na escolha do destino)</label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Salvar setor</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: MINHA CONTA (senha / primeiro acesso) ============ -->
+<dialog id="dlg-conta">
+  <form id="form-conta" class="modal-corpo" autocomplete="off">
+    <h2 id="conta-titulo">Alterar senha</h2>
+    <p class="dica" id="conta-info"></p>
+    <div id="conta-bloco-senha">
+      <label>Nova senha <input type="password" name="senha" maxlength="72" autocomplete="new-password"></label>
+      <label>Repita a nova senha <input type="password" name="senha2" maxlength="72" autocomplete="new-password"></label>
+      <small class="dica">De 10 a 72 caracteres, com letras e números.</small>
+    </div>
+    <div id="conta-bloco-pin">
+      <label>PIN provisório (o que o gestor lhe entregou)
+        <input class="pin" name="pin_atual" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
+      </label>
+      <label>Novo PIN (4 a 6 dígitos)
+        <input class="pin" name="pin_novo" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
+      </label>
+      <label>Repita o novo PIN
+        <input class="pin" name="pin_novo2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
+      </label>
+    </div>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="conta-cancelar" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- Área de impressão (preenchida por JS; só aparece ao imprimir) -->
 <div id="print-root" aria-hidden="true"></div>
 
 <script src="config.js"></script>
+<script src="assinatura.js"></script>
+<script src="painel.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

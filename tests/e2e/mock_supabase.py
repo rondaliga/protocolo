@@ -84,6 +84,7 @@ class H(BaseHTTPRequestHandler):
                 alvo = unquote(q.get("user_id", [""])[0]).removeprefix("eq.")
                 assert UUID.match(alvo)
                 r = como(uid, f"select coalesce(jsonb_agg(jsonb_build_object('nome',p.nome,'papel',p.papel,'setor_id',p.setor_id,"
+                              f"'deve_trocar_senha',p.deve_trocar_senha,'deve_trocar_pin',p.deve_trocar_pin,"
                               f"'setores',case when s.id is null then null else jsonb_build_object('nome',s.nome) end)),'[]')::text "
                               f"from public.perfis p left join public.setores s on s.id=p.setor_id where p.user_id='{alvo}'")
             elif tabela == "auditoria":
@@ -101,19 +102,31 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.responder(400, {"message": str(e)})
 
+    def do_PUT(self):                       # GoTrue: PUT /auth/v1/user (troca de senha do próprio usuário)
+        u = urlparse(self.path); uid = self.uid()
+        if u.path != "/auth/v1/user": return self.responder(404, {"message": "rota fora do mock"})
+        if not uid: return self.responder(401, {"message": "JWT inválido"})
+        senha = str(self.corpo().get("password", ""))
+        if len(senha) < 6: return self.responder(422, {"msg": "Password should be at least 6 characters."})
+        if sql(f"select (encrypted_password = extensions.crypt({lit(senha)}, encrypted_password))::text from auth.users where id = '{uid}'") == "true":
+            return self.responder(422, {"msg": "New password should be different from the old password."})
+        sql(f"update auth.users set encrypted_password = extensions.crypt({lit(senha)}, extensions.gen_salt('bf')), updated_at = now() where id = '{uid}'")
+        self.responder(200, {"id": uid})
+
     def do_POST(self):
         u = urlparse(self.path)
         if u.path == "/auth/v1/token":
             c = self.corpo(); gr = parse_qs(u.query).get("grant_type", [""])[0]
             if gr == "password":
-                email = str(c.get("email", "")).replace("'", "")
-                r = sql(f"select id from auth.users where email = '{email}'")
-                if r == "null" or c.get("password") != SENHA_TESTE:
+                r = sql(f"select id from auth.users where lower(email) = lower({lit(str(c.get('email', '')))}) and (banned_until is null or banned_until < now()) "
+                        f"and encrypted_password = extensions.crypt({lit(str(c.get('password', '')))}, encrypted_password)")
+                if r == "null" or not UUID.match(r):
                     return self.responder(400, {"error_code": "invalid_credentials", "msg": "Invalid login credentials"})
                 uid = r
             else:
                 uid = str(c.get("refresh_token", "")).removeprefix("r.")
                 if not UUID.match(uid): return self.responder(400, {"error_code": "invalid_grant"})
+            if gr == "password": sql(f"update auth.users set last_sign_in_at = now() where id = '{uid}'")
             return self.responder(200, {"access_token": f"mock.{uid}", "refresh_token": f"r.{uid}", "expires_in": 3600, "user": {"id": uid}})
         if u.path == "/auth/v1/logout": return self.responder(204, b"")
         if u.path.startswith("/storage/v1/object/protocolo-fotos/"):

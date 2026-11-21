@@ -54,6 +54,9 @@ legacy/                    versão Python anterior (referência)
    (Cria tabelas, triggers, RPCs, RLS e alguns setores de exemplo.)
    **Logo em seguida, rode também `supabase/02_prazos_alertas.sql`** (prazos, tempos máximos, foto, destino e alertas —
    veja a seção 4B). Pode rodar de novo sem problema.
+   **Depois rode `supabase/03_painel_gestor.sql`** (painel de controle, gestor com acesso total, assinatura digitada,
+   trilha organizada — seção 4C). **Ordem obrigatória: schema.sql → 02 → 03** (rodar o 02 depois do 03 recria assinaturas antigas;
+   se isso acontecer, rode o 03 de novo).
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
 4. **Setores** (SQL Editor): ajuste à sua unidade.
@@ -69,6 +72,7 @@ legacy/                    versão Python anterior (referência)
    select public.admin_cadastrar_perfil('ana@hospital.org',   'Ana Lima',    'super_setor','Jurídico', '1957');
    select public.admin_cadastrar_perfil('paula@hospital.org', 'Paula Reis',  'gestor',     null,       '6084');
    ```
+   **Dica (v3):** depois do primeiro gestor cadastrado, os demais usuários são criados pelo **Painel de controle**, sem SQL.
    O PIN (4 a 6 dígitos) é a **assinatura/ciência** de cada recebimento; cada pessoa pode trocá-lo no sistema
    (*Alterar PIN*). Desativar/desbloquear: `select public.admin_desativar_perfil('x@y.org');` e
    `select public.admin_desbloquear_pin('x@y.org');`
@@ -180,6 +184,38 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
 - O prazo padrão é uma **estimativa** para não ficar sem controle; o prazo legal real é o do documento — o ADM deve ajustá-lo.
 - Se alguém trocar de setor ou sair, ajuste o perfil (`admin_cadastrar_perfil` / `admin_desativar_perfil`) para que os avisos cheguem à pessoa certa.
 
+## 4C. Versão 3 — painel de controle, gestor total, assinatura digitada, trilha organizada
+
+**Painel de controle (aba exclusiva do gestor)** — sub-abas:
+- **Usuários**: criar (e-mail, nome, papel, setor; senha e PIN provisórios gerados na tela), editar, **desativar/reativar**
+  (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
+  Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
+- **Setores**, **Prazos e regras** (parâmetros validados), **Feriados** (contam no cálculo de horas úteis) e **Sistema** (resumo).
+- Tudo é gravado na trilha de auditoria.
+
+**Primeiro acesso**: o usuário entra com a senha provisória e é obrigado a definir a **própria senha** (10–72 caracteres, com letra
+e número) e o **próprio PIN** (não pode ser o provisório nem um PIN fraco). A senha provisória deixa de valer.
+
+**Gestor com acesso total**: registra protocolos, recebe como ADM e confirma em nome de qualquer setor, vê todas as pendências.
+O parâmetro `gestor_ignora_segregacao` (padrão `true`) permite que o gestor assine várias etapas do mesmo protocolo;
+mude para `false` em *Prazos e regras* se quiser a segregação de funções também para ele.
+
+**Assinatura**: três modos — **Digitar** (escreve o nome e escolhe entre 6 estilos de fonte: Clássica, Elegante, Manuscrita, Formal,
+Moderna, Rubrica), **Desenhar** (mouse, dedo ou caneta) e **Só o PIN** (apenas se a assinatura visual não for obrigatória).
+A imagem é gerada no navegador no instante da assinatura e gravada como PNG; assim, o registro não depende das fontes de quem abrir depois.
+As fontes usadas são as **instaladas no aparelho** (nada é baixado); em aparelhos sem a fonte, cai numa alternativa parecida.
+
+**Trilha de auditoria reorganizada**: colunas Data/hora · Tipo · Usuário · Ação · Protocolo · O que aconteceu (texto legível, sem JSON);
+filtros por busca, tipo de evento, usuário e período; paginação; **Exportar CSV** (até 5.000 linhas, protegido contra injeção de
+fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registradas.
+
+### Limites honestos da versão 3
+- A criação de usuários grava direto nas tabelas de autenticação do Supabase (`auth.users`/`auth.identities`) por SQL. Isso depende
+  da estrutura interna do Supabase; se uma atualização dele mudar isso e a criação falhar, crie o usuário em
+  *Authentication → Users* e vincule o perfil no painel (ou por `admin_cadastrar_perfil`).
+- Teste no seu projeto real: crie um usuário pelo painel e entre com ele em outra janela.
+- As ressalvas de e-mail/sino/horário do GitHub Actions da versão 2 continuam valendo.
+
 ## 5. Segurança — decisões adotadas
 
 | Tema | Como foi resolvido |
@@ -223,7 +259,7 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
 # Schema (RLS, sequência, imutabilidade, PIN, auditoria) — precisa de psql e um PostgreSQL 15+
 PGHOST=localhost PGUSER=postgres bash supabase/tests/run_local.sh        # banco descartável "protocolo_teste"
 
-# (o run_local.sh aplica schema.sql + 02_prazos_alertas.sql e roda 120 verificações, incluindo horas úteis, SLA, foto e e-mails)
+# (o run_local.sh aplica schema.sql + 02_prazos_alertas.sql e aplica também 03_painel_gestor.sql e roda 211 verificações: horas úteis, SLA, foto, e-mails, painel, primeiro acesso, trilha e exportação)
 
 # Navegador de ponta a ponta (opcional; precisa de Playwright e Pillow): site real + schema real
 bash tests/e2e/preparar_db.sh && SUPABASE_URL=http://127.0.0.1:5057 SUPABASE_ANON_KEY=chave-de-teste-0000000000 python3 scripts/build_site.py \
@@ -235,5 +271,5 @@ só o transporte HTTP é simulado. **Valide também no seu projeto Supabase real
 com os quatro perfis).
 
 ## 8. Próximos passos sugeridos
-Cadastro de MFA (TOTP); gestão de usuários, setores, feriados e parâmetros pela interface (hoje via SQL); relatório mensal de
+Cadastro de MFA (TOTP); relatório mensal de
 cumprimento de prazos por setor; push com o navegador fechado; rotina de backup automatizada (GitHub Actions + `pg_dump`).
