@@ -1,0 +1,73 @@
+name: Publicar no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissões mínimas necessárias para publicar no Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # 1) Valida o schema SQL (RLS, sequência, imutabilidade, PIN, auditoria) num PostgreSQL descartável
+  testar-schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testes do schema
+        run: bash supabase/tests/run_local.sh
+
+  # 2) Gera o site injetando a configuração PÚBLICA do Supabase
+  build:
+    needs: testar-schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Gerar site (dist/)
+        env:
+          # Configure em: Settings → Secrets and variables → Actions → Variables
+          # (a URL e a chave anon são públicas; podem estar em Variables ou Secrets)
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          UNIDADE: ${{ vars.UNIDADE || 'CECAN - LNRCC' }}
+          TIMEZONE: ${{ vars.TIMEZONE || 'America/Fortaleza' }}
+          IDLE_MINUTES: ${{ vars.IDLE_MINUTES || '30' }}
+          ASSINATURA_OBRIGATORIA: ${{ vars.ASSINATURA_OBRIGATORIA || 'false' }}
+        run: python3 scripts/build_site.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # 3) Publica
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
