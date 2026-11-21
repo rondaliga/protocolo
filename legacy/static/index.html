@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Livro de Protocolo Eletrônico</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ====================== LOGIN ====================== -->
+<section id="view-login" class="login-wrap" hidden>
+  <form id="form-login" class="login-card" autocomplete="on">
+    <div class="brand brand-login">
+      <img class="logo" alt="" hidden>
+      <span class="marca-cruz" aria-hidden="true">+</span>
+    </div>
+    <h1>Livro de Protocolo</h1>
+    <p class="sub">Recebimento e tramitação de demandas judiciais e correspondências</p>
+    <p class="unidade" data-unidade></p>
+    <label>Login
+      <input name="login" type="text" autocomplete="username" required autofocus>
+    </label>
+    <label>Senha
+      <input name="senha" type="password" autocomplete="current-password" required>
+    </label>
+    <p class="erro" id="login-erro" role="alert" hidden></p>
+    <button class="btn primario" type="submit">Entrar</button>
+    <p class="nota">Acesso restrito e monitorado. Todas as ações ficam registradas na trilha de auditoria.</p>
+  </form>
+</section>
+
+<!-- ====================== APLICAÇÃO ====================== -->
+<div id="view-app" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" alt="" hidden>
+      <span class="marca-cruz" aria-hidden="true">+</span>
+      <div>
+        <strong>Livro de Protocolo Eletrônico</strong>
+        <span class="unidade" data-unidade></span>
+      </div>
+    </div>
+    <div class="usuario">
+      <div><strong id="usr-nome"></strong><span id="usr-perfil"></span></div>
+      <button class="btn" id="btn-sair" type="button">Sair</button>
+    </div>
+  </header>
+
+  <nav class="abas" id="abas">
+    <button type="button" class="aba ativa" data-aba="protocolos">Protocolos</button>
+    <button type="button" class="aba" data-aba="auditoria" id="btn-aba-auditoria" hidden>Auditoria</button>
+  </nav>
+
+  <main>
+    <!-- ---------- Aba Protocolos ---------- -->
+    <section id="painel-protocolos">
+      <div class="cards" id="cards">
+        <article class="card c-total"><span class="rot">Total no livro</span><strong id="c-total">–</strong><small id="c-hoje"></small></article>
+        <article class="card c-adm"><span class="rot">Pendente ADM</span><strong id="c-adm">–</strong><small>aguardando 2º aceite</small></article>
+        <article class="card c-setor"><span class="rot">Pendente Setor Final</span><strong id="c-setor">–</strong><small>aguardando 3º aceite</small></article>
+        <article class="card c-ok"><span class="rot">Concluídos / Entregues</span><strong id="c-ok">–</strong><small>fluxo completo</small></article>
+      </div>
+
+      <form class="filtros" id="form-filtros">
+        <label class="f-busca">Buscar por nº ou descrição
+          <input type="search" name="q" placeholder="Ex.: 2026-0012 ou Vara Cível" maxlength="100">
+        </label>
+        <label>Situação
+          <select name="status">
+            <option value="">Todas</option>
+            <option value="PENDENTE_ADM">Pendente ADM</option>
+            <option value="PENDENTE_SETOR">Pendente Setor Final</option>
+            <option value="CONCLUIDO">Concluído / Entregue</option>
+          </select>
+        </label>
+        <label>De <input type="date" name="data_ini"></label>
+        <label>Até <input type="date" name="data_fim"></label>
+        <div class="f-acoes">
+          <button class="btn" type="submit">Filtrar</button>
+          <button class="btn sec" type="button" id="btn-limpar">Limpar</button>
+        </div>
+      </form>
+
+      <div class="barra-acoes">
+        <button class="btn primario" type="button" id="btn-novo" hidden>+ Novo registro (Portaria)</button>
+        <button class="btn sec" type="button" id="btn-pdf-lista">Exportar listagem em PDF</button>
+        <span class="spacer"></span>
+        <span class="contagem" id="contagem"></span>
+      </div>
+
+      <div class="tabela-wrap">
+        <table id="tabela">
+          <thead>
+            <tr>
+              <th>Nº</th>
+              <th>Descrição do documento</th>
+              <th>Situação</th>
+              <th>1ª · Portaria</th>
+              <th>2ª · ADM</th>
+              <th>3ª · Super/Setor</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <p class="vazio" id="vazio" hidden>Nenhum protocolo encontrado.</p>
+      </div>
+      <div class="paginacao">
+        <button class="btn sec" type="button" id="pg-ant">‹ Anterior</button>
+        <span id="pg-info"></span>
+        <button class="btn sec" type="button" id="pg-prox">Próxima ›</button>
+      </div>
+    </section>
+
+    <!-- ---------- Aba Auditoria ---------- -->
+    <section id="painel-auditoria" hidden>
+      <div class="barra-acoes">
+        <button class="btn primario" type="button" id="btn-verificar">Verificar integridade da trilha</button>
+        <span id="resultado-verificacao" class="verificacao" role="status"></span>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Data/hora</th><th>Usuário</th><th>Ação</th><th>Protocolo</th><th>Detalhes</th><th>IP</th></tr></thead>
+          <tbody id="tbody-audit"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ====================== MODAL: NOVO REGISTRO (1ª etapa) ====================== -->
+<dialog id="dlg-novo">
+  <form id="form-novo" class="modal-corpo" autocomplete="off">
+    <h2>Novo registro — 1ª etapa (Portaria)</h2>
+    <div class="aviso-lgpd" role="note">
+      <strong>Aviso LGPD.</strong>
+      Preencher um registro por documento. Informar dados estritamente necessários para identificar o documento,
+      evitando expor informações pessoais sensíveis.
+    </div>
+    <label>Descrição do documento
+      <textarea name="descricao" rows="3" maxlength="300" required
+        placeholder="Ex.: Ofício nº 123/2026 - 2ª Vara Cível  |  Carta A.R. Correios"></textarea>
+      <small class="contador"><span id="cont-desc">0</span>/300</small>
+    </label>
+    <p class="dica">Nº do protocolo, data e horário são gerados automaticamente pelo servidor e não podem ser alterados.</p>
+    <fieldset class="assinatura">
+      <legend>Aceite do recebedor</legend>
+      <label>PIN de assinatura de <strong class="eu"></strong>
+        <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required>
+      </label>
+      <div class="pad-wrap">
+        <canvas id="pad-novo" width="480" height="150" aria-label="Quadro de assinatura"></canvas>
+        <button type="button" class="btn sec mini" data-limpar="pad-novo">Limpar assinatura</button>
+      </div>
+      <small class="dica" data-dica-assinatura></small>
+    </fieldset>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Registrar recebimento</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ====================== MODAL: DETALHE / TRAMITAÇÃO ====================== -->
+<dialog id="dlg-detalhe">
+  <div class="modal-corpo" id="detalhe-corpo"></div>
+</dialog>
+
+<!-- ====================== MODAL: CONFIRMAR RECEBIMENTO (2ª e 3ª etapas) ====================== -->
+<dialog id="dlg-confirmar">
+  <form id="form-confirmar" class="modal-corpo" autocomplete="off">
+    <h2 id="conf-titulo"></h2>
+    <div class="resumo-doc">
+      <strong id="conf-numero"></strong>
+      <span id="conf-desc"></span>
+    </div>
+    <label id="conf-setor-wrap" hidden>Setor final de destino
+      <select id="conf-setor" disabled></select>
+    </label>
+    <fieldset class="assinatura">
+      <legend>Aceite do recebedor</legend>
+      <label>PIN de assinatura de <strong class="eu"></strong>
+        <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required>
+      </label>
+      <div class="pad-wrap">
+        <canvas id="pad-conf" width="480" height="150" aria-label="Quadro de assinatura"></canvas>
+        <button type="button" class="btn sec mini" data-limpar="pad-conf">Limpar assinatura</button>
+      </div>
+      <small class="dica" data-dica-assinatura></small>
+    </fieldset>
+    <p class="dica">Data e horário do recebimento serão registrados automaticamente pelo servidor.</p>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Confirmar recebimento</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ====================== MODAL: CORRIGIR DESCRIÇÃO ====================== -->
+<dialog id="dlg-correcao">
+  <form id="form-correcao" class="modal-corpo" autocomplete="off">
+    <h2>Corrigir descrição</h2>
+    <p class="dica">A descrição original é preservada. A correção fica registrada com seu nome, data/hora e justificativa.</p>
+    <div class="resumo-doc"><strong id="corr-numero"></strong><span id="corr-atual"></span></div>
+    <label>Nova descrição
+      <textarea name="descricao_nova" rows="3" maxlength="300" required></textarea>
+    </label>
+    <label>Justificativa (obrigatória)
+      <textarea name="justificativa" rows="2" minlength="10" maxlength="500" required
+        placeholder="Ex.: erro de digitação no número do ofício"></textarea>
+    </label>
+    <label>PIN de assinatura de <strong class="eu"></strong>
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required>
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario">Registrar correção</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
