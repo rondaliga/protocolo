@@ -1,6 +1,6 @@
 /* Assinatura / ciência de quem recebe — três modos:
+ *   • Desenhada : quadro (mouse, dedo ou caneta) — é a opção inicial;
  *   • Digitada  : o nome é "escrito" em fontes de assinatura (sem precisar desenhar) — escolha entre 6 estilos;
- *   • Desenhada : quadro (mouse, dedo ou caneta);
  *   • Somente PIN (quando a assinatura visual não é obrigatória).
  * O resultado é sempre um PNG gerado no navegador no instante da assinatura; por isso a imagem gravada
  * é exatamente a que o usuário viu, mesmo que outro computador não tenha as mesmas fontes.
@@ -69,11 +69,15 @@
       <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
     </label>
     <div class="modos" role="group" aria-label="Forma de assinatura">
-      <button type="button" class="modo" data-modo="digitada" aria-pressed="true">⌨ Digitar</button>
-      <button type="button" class="modo" data-modo="desenhada" aria-pressed="false">✍ Desenhar</button>
+      <button type="button" class="modo" data-modo="desenhada" aria-pressed="true">✍ Desenhar</button>
+      <button type="button" class="modo" data-modo="digitada" aria-pressed="false">⌨ Digitar</button>
       ${obrigatoria ? '' : '<button type="button" class="modo" data-modo="pin" aria-pressed="false">🔒 Só o PIN</button>'}
     </div>
-    <div class="painel-modo" data-painel="digitada">
+    <div class="painel-modo pad-wrap" data-painel="desenhada">
+      <canvas class="quadro" width="${LARG}" height="${ALT}" aria-label="Quadro de assinatura"></canvas>
+      <button type="button" class="btn sec mini" data-limpar-quadro>Limpar assinatura</button>
+    </div>
+    <div class="painel-modo" data-painel="digitada" hidden>
       <label>Nome que aparecerá na assinatura
         <input type="text" class="assin-texto" maxlength="60" autocomplete="off" spellcheck="false">
       </label>
@@ -82,10 +86,6 @@
           <canvas width="300" height="94"></canvas><span>${e.nome}</span></button>`).join('')}
       </div>
     </div>
-    <div class="painel-modo pad-wrap" data-painel="desenhada" hidden>
-      <canvas class="quadro" width="${LARG}" height="${ALT}" aria-label="Quadro de assinatura"></canvas>
-      <button type="button" class="btn sec mini" data-limpar-quadro>Limpar assinatura</button>
-    </div>
     <div class="painel-modo" data-painel="pin" hidden><p class="dica">Será registrada apenas a ciência por PIN (sem imagem de assinatura).</p></div>
     <small class="dica" data-dica></small>`;
 
@@ -93,7 +93,7 @@
     fieldset.classList.add('assinatura');
     fieldset.innerHTML = HTML(obrigatoria);
     const $ = (s) => fieldset.querySelector(s);
-    const estado = { modo: 'digitada', estilo: ESTILOS[0].id, texto: '' };
+    const estado = { modo: 'desenhada', estilo: ESTILOS[0].id, texto: '' };
     const quadro = new Quadro($('canvas.quadro'));
     const campo = $('.assin-texto');
 
@@ -122,7 +122,7 @@
 
     return {
       reiniciar(nome) {
-        campo.value = (nome || '').slice(0, 60); quadro.limpar(); estado.estilo = ESTILOS[0].id; trocarModo('digitada');
+        campo.value = (nome || '').slice(0, 60); quadro.limpar(); estado.estilo = ESTILOS[0].id; trocarModo('desenhada');
       },
       // devolve { png, modo } ou lança Error com a mensagem para o usuário
       obter() {

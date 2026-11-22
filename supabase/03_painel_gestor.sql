@@ -194,7 +194,7 @@ begin
 
   if v_foto is null then
     if v_tipo = 'judicial' and public._param_text('foto_obrigatoria_judicial', 'true') = 'true' then
-      raise exception 'Demandas judiciais exigem a foto do envelope/capa do documento.';
+      raise exception 'Demandas judiciais exigem a foto do envelope ou da capa do documento.';
     end if;
   else
     if v_foto !~ ('^' || v_uid::text || '/[0-9a-f-]{36}\.jpg$') then raise exception 'Caminho da foto inválido.'; end if;
@@ -218,8 +218,8 @@ begin
   v_dias := case v_tipo when 'judicial' then public._param_int('prazo_judicial_dias', 5)
                         else public._param_int('prazo_correspondencia_dias', 0) end;
   v_prazo := case when v_dias > 0 then public._somar_dias_uteis((v_agora at time zone public._fuso())::date, v_dias) end;
-  v_sla := public._somar_horas_uteis(v_agora, case when v_urg then public._param_int('sla_adm_urgente_horas', 2)
-                                                   else public._param_int('sla_adm_horas', 4) end);
+  v_sla := public._somar_horas_uteis(v_agora, case when v_urg then (public._param_min('sla_adm_urgente_min', 120) / 60.0)
+                                                   else (public._param_min('sla_adm_min', 240) / 60.0) end);
 
   insert into public.protocolos (numero, descricao, status, created_at, created_by, tipo, urgente, prazo_data, sla_limite)
   values (v_num, v_desc, 'pendente_adm', v_agora, v_uid, v_tipo, v_urg, v_prazo, v_sla) returning id into v_id;
@@ -296,8 +296,8 @@ begin
             v_setor_id, v_setor_nome, v_png, v_agora, p_assinatura_modo);
 
   if p_etapa = 2 then
-    v_sla := public._somar_horas_uteis(v_agora, case when v_p.urgente then public._param_int('sla_setor_urgente_horas', 4)
-                                                     else public._param_int('sla_setor_horas', 9) end);
+    v_sla := public._somar_horas_uteis(v_agora, case when v_p.urgente then (public._param_min('sla_setor_urgente_min', 240) / 60.0)
+                                                     else (public._param_min('sla_setor_min', 540) / 60.0) end);
     update public.protocolos set setor_destino_id = p_setor_destino_id, sla_limite = v_sla where id = v_p.id;
     perform public._enfileirar_email('encaminhado:' || v_p.id, 'ENCAMINHADO', v_p.id,
               public._emails(array['super_setor'], p_setor_destino_id),
@@ -474,10 +474,10 @@ declare
 begin
   if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(v_email) > 200 then raise exception 'Informe um e-mail válido.'; end if;
   if length(v_nome) not between 2 and 120 then raise exception 'Informe o nome completo (2 a 120 caracteres).'; end if;
-  if p_papel not in ('portaria', 'adm', 'super_setor', 'gestor') then raise exception 'Papel inválido.'; end if;
+  if p_papel not in ('portaria', 'adm', 'super_setor', 'gestor') then raise exception 'Perfil inválido.'; end if;
   if p_papel = 'super_setor' then
     select nome into v_setor from public.setores where id = p_setor_id and ativo;
-    if v_setor is null then raise exception 'Escolha o setor do usuário (Super/Setor).'; end if;
+    if v_setor is null then raise exception 'Escolha o setor do usuário (setor de destino).'; end if;
   else p_setor_id := null; end if;
   if p_pin is null or p_pin !~ '^\d{4,6}$' then raise exception 'O PIN provisório deve ter de 4 a 6 dígitos numéricos.'; end if;
   select id into v_uid from auth.users where lower(email) = v_email;
@@ -507,14 +507,14 @@ begin
   select * into a from public.perfis where user_id = p_user_id;
   if not found then raise exception 'Usuário não encontrado.'; end if;
   if length(v_nome) not between 2 and 120 then raise exception 'Informe o nome completo (2 a 120 caracteres).'; end if;
-  if p_papel not in ('portaria', 'adm', 'super_setor', 'gestor') then raise exception 'Papel inválido.'; end if;
+  if p_papel not in ('portaria', 'adm', 'super_setor', 'gestor') then raise exception 'Perfil inválido.'; end if;
   if p_papel = 'super_setor' then
     select nome into v_setor from public.setores where id = p_setor_id and ativo;
-    if v_setor is null then raise exception 'Escolha o setor do usuário (Super/Setor).'; end if;
+    if v_setor is null then raise exception 'Escolha o setor do usuário (setor de destino).'; end if;
   else p_setor_id := null; end if;
   if a.user_id = g.user_id and p_papel <> 'gestor' then raise exception 'Você não pode retirar o seu próprio acesso de gestor.'; end if;
   if a.papel = 'gestor' and p_papel <> 'gestor' and a.ativo and public._outros_gestores_ativos(a.user_id) = 0 then
-    raise exception 'Não é possível remover o papel do último gestor ativo.';
+    raise exception 'Não é possível remover o perfil de gestor do último gestor ativo.';
   end if;
   v_msg := public._checar_pin(g.user_id, p_pin_gestor);
   if v_msg is not null then return jsonb_build_object('ok', false, 'erro', v_msg); end if;

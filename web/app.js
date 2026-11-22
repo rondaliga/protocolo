@@ -5,7 +5,7 @@
  * Segurança:
  *  - só a chave "anon" (pública) está no navegador; os dados são protegidos por login + RLS no banco;
  *  - toda gravação passa por funções RPC do banco (validam perfil, sequência, PIN e gravam auditoria);
- *  - data e horário nunca são enviados pelo cliente — vêm do relógio do servidor (now());
+ *  - data e hora nunca são enviados pelo cliente — vêm do relógio do servidor (now());
  *  - todo texto vindo do banco passa por esc() antes de virar HTML; a CSP bloqueia scripts inline;
  *  - sessão em sessionStorage (some ao fechar a aba) + logout automático por inatividade.
  */
@@ -14,25 +14,26 @@
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const pl = (n, um, varios) => `${n} ${Number(n) === 1 ? um : varios}`;
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ------------------------------------------------------------------ configuração
-  const CFG = Object.assign({ UNIDADE: 'CECAN - LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 30,
+  const CFG = Object.assign({ UNIDADE: 'CECAN – LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 30,
                               ASSINATURA_OBRIGATORIA: false }, window.APP_CONFIG || {});
   const BASE = String(CFG.SUPABASE_URL || '').replace(/\/+$/, '');
   const KEY = String(CFG.SUPABASE_ANON_KEY || '');
   const CONFIG_OK = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:/]?)/.test(BASE) && KEY.length > 20 && !/SEU-PROJETO|SUA_CHAVE/.test(BASE + KEY);
 
-  const ORIENTACAO = 'Preencher um registro por documento. Informar data e horário em cada etapa e colher a assinatura de '
+  const ORIENTACAO = 'Preencher um registro por documento. Informar data e hora em cada etapa e colher a assinatura de '
     + 'quem recebe. Evitar registrar informações pessoais ou sigilosas além do necessário para identificar o documento.';
   const FINALIDADE = 'Registrar o recebimento e o encaminhamento de demandas judiciais e correspondências recebidas pelos '
     + 'Correios, mantendo o histórico de entrega entre os setores responsáveis.';
 
-  const STATUS = { pendente_adm: 'Pendente ADM', pendente_setor: 'Pendente Setor Final', concluido: 'Concluído / Entregue' };
-  const PAPEL = { portaria: 'Portaria', adm: 'Administração (ADM)', super_setor: 'Super/Setor', gestor: 'Gestor (acesso total)' };
+  const STATUS = { pendente_adm: 'Aguardando ADM', pendente_setor: 'Aguardando setor de destino', concluido: 'Concluído / Entregue' };
+  const PAPEL = { portaria: 'Portaria', adm: 'Administração (ADM)', super_setor: 'Setor de destino', gestor: 'Gestor (acesso total)' };
   const ASSIN_ROTULO = { pin: 'Ciência por PIN', pin_canvas: 'Assinatura desenhada', pin_digitada: 'Assinatura digitada' };
-  const ETAPA_NOME = { 1: '1ª Etapa — Portaria', 2: '2ª Etapa — ADM', 3: '3ª Etapa — Super/Setor' };
+  const ETAPA_NOME = { 1: '1ª Etapa — Portaria', 2: '2ª Etapa — ADM', 3: '3ª Etapa — Setor de destino' };
   const LIMITE_LIVRO_IMPRESSO = 300;
 
   // ------------------------------------------------------------------ datas (sempre no fuso da unidade)
@@ -54,7 +55,7 @@
   };
   const SEM = { ok: 'No prazo', atencao: 'Atenção', critico: 'Vence em breve', vencido: 'VENCIDO', sem_prazo: 'Sem prazo', concluido: 'Concluído' };
   const diasTxt = (x) => (x.status === 'concluido' ? '' : x.dias_restantes == null ? '' : x.dias_restantes < 0
-    ? `${-x.dias_restantes} dia(s) de atraso` : x.dias_restantes === 0 ? 'vence hoje' : `${x.dias_restantes} dia(s)`);
+    ? `${pl(-x.dias_restantes, 'dia', 'dias')} de atraso` : x.dias_restantes === 0 ? 'vence hoje' : pl(x.dias_restantes, 'dia', 'dias'));
   const prazoHtml = (x) => (x.status === 'concluido' ? '<span class="sem concluido">Concluído</span>'
     : `<span class="sem ${esc(x.semaforo)}">${esc(SEM[x.semaforo] || x.semaforo)}</span>${x.prazo_data ? `<small class="et-sub">${data(x.prazo_data + 'T12:00:00')} · ${esc(diasTxt(x))}</small>` : ''}`);
   const tipoHtml = (x) => (x.tipo === 'judicial' ? '<span class="tipo-jud">JUDICIAL</span>' : '') + (x.urgente ? '<span class="tipo-urg">URGENTE</span>' : '');
@@ -65,7 +66,7 @@
   };
 
   const estado = { sessao: null, perfil: null, aba: 'protocolos', pagina: 1, porPagina: 25, total: 0,
-                   aberto: null, logo: false, setores: null, alertasVistos: null, fotoBlob: null, fotoUrl: null, ultimaAtividade: Date.now(), reqSeq: 0 };
+                   aberto: null, logo: false, logoSrc: null, setores: null, alertasVistos: null, fotoBlob: null, fotoUrl: null, ultimaAtividade: Date.now(), reqSeq: 0 };
 
   // ------------------------------------------------------------------ cliente Supabase (Auth + REST)
   const SK = 'lp.sessao';
@@ -99,7 +100,7 @@
 
   async function garantirToken() {
     const s = estado.sessao;
-    if (!s) throw new ErroApi('Faça login para continuar.', 401);
+    if (!s) throw new ErroApi('Entre no sistema para continuar.', 401);
     if (s.expires_at - 60 > Date.now() / 1000) return s.access_token;
     try { await tokenGrant('refresh_token', { refresh_token: s.refresh_token }); } catch { encerrarSessao('Sessão expirada. Entre novamente.'); throw new ErroApi('Sessão expirada.', 401); }
     return estado.sessao.access_token;
@@ -203,12 +204,12 @@
     const r = await rpc('resumo_livro');
     $('#k-total').textContent = r.total; $('#k-adm').textContent = r.pendente_adm;
     $('#k-setor').textContent = r.pendente_setor; $('#k-ok').textContent = r.concluido;
-    $('#k-hoje').textContent = `${r.hoje} registrado(s) hoje`;
+    $('#k-hoje').textContent = `${r.hoje} ${r.hoje === 1 ? 'registrado' : 'registrados'} hoje`;
     $('#k-venc').textContent = r.vencidos; $('#k-crit').textContent = `${r.criticos} vencem em até 2 dias`;
     $('#k-sla').textContent = r.sla_estourado;
     const fx = $('#faixa-alertas');
     fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
-    fx.textContent = `⚠ Atenção: ${r.vencidos} demanda(s) com prazo vencido e ${r.sla_estourado} parada(s) além do tempo máximo de recebimento.`;
+    fx.textContent = `⚠ Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`} e ${r.sla_estourado === 1 ? '1 parada' : `${r.sla_estourado} paradas`} além do tempo máximo de recebimento.`;
   }
 
   function celulaEtapa(em, user, setor) {
@@ -235,7 +236,7 @@
     const paginas = Math.max(1, Math.ceil(r.total / estado.porPagina));
     $('#pg-info').textContent = `Página ${estado.pagina} de ${paginas}`;
     $('#pg-ant').disabled = estado.pagina <= 1; $('#pg-prox').disabled = estado.pagina >= paginas;
-    $('#contagem').textContent = `${r.total} registro(s)`;
+    $('#contagem').textContent = pl(r.total, 'registro', 'registros');
     const ff = $('#form-filtros');
     $$('.kpi').forEach((k) => k.classList.toggle('sel', k.dataset.alerta
       ? ff.alerta.value === k.dataset.alerta : (k.dataset.status === ff.status.value && ff.alerta.value === '' && ff.status.value !== '')));
@@ -269,39 +270,62 @@
     const podeCorrigir = ['portaria', 'adm', 'gestor'].includes(papel);
     const podePrazo = ['adm', 'gestor'].includes(papel) && p.status !== 'concluido';
     const linhas = etapasCompletas(p).map((e) => {
-      if (!e.feito) return `<li class="pendente"><div><b>${esc(e.nome)}</b><small>Aguardando recebimento</small></div><div></div></li>`;
+      if (!e.feito) return `<li class="pendente"><span class="no">${e.n}</span><div class="et-corpo">
+        <div class="et-cab"><b>${esc(e.nome)}</b><span class="et-st aguarda">Aguardando</span></div>
+        <p class="et-vazio">Ainda não recebido nesta etapa.</p></div></li>`;
       const png = pngSeguro(e.assinatura_png);
-      const ass = png ? `<img class="ass-img" src="${png}" alt="Assinatura de ${esc(e.usuario)}"><small class="et-sub">${esc(ASSIN_ROTULO[e.assinatura_tipo] || '')}</small>` : '<span class="pin-ok">✔ Ciência por PIN</span>';
-      return `<li class="feito"><div><b>${esc(e.nome)}</b>
-        <small>${data(e.recebido_em)} às ${hora(e.recebido_em, true)} · ${esc(e.usuario)}</small>
-        ${e.setor ? `<small>Setor final: <strong>${esc(e.setor)}</strong></small>` : ''}
-        <small>Selo: ${esc(String(e.selo).slice(0, 16))}…</small></div><div>${ass}</div></li>`;
+      const ass = png
+        ? `<img class="ass-img" src="${png}" alt="Assinatura de ${esc(e.usuario)}"><span class="et-sub">${esc(ASSIN_ROTULO[e.assinatura_tipo] || 'Assinatura')}</span>`
+        : '<span class="pin-ok">✔ Ciência confirmada por PIN</span><span class="et-sub">sem imagem de assinatura</span>';
+      return `<li class="feito"><span class="no">${e.n}</span><div class="et-corpo">
+        <div class="et-cab"><b>${esc(e.nome)}</b><span class="et-st">✔ Concluída</span></div>
+        <dl class="et-meta">
+          <div><dt>Data e hora</dt><dd>${data(e.recebido_em)} às ${hora(e.recebido_em, true)}</dd></div>
+          <div><dt>Responsável</dt><dd>${esc(e.usuario)}</dd></div>
+          ${e.setor ? `<div><dt>Setor final</dt><dd>${esc(e.setor)}</dd></div>` : ''}
+          <div><dt>Selo de integridade</dt><dd><code title="${esc(String(e.selo))}">${esc(String(e.selo).slice(0, 16))}…</code></dd></div>
+        </dl>
+        <div class="et-ass"><span class="et-ass-rot">Assinatura</span><div class="et-ass-caixa">${ass}</div></div></div></li>`;
     }).join('');
-    const corr = (p.correcoes || []).length ? `<div class="correcoes"><h3>Correções de descrição (original preservada)</h3><ul>
-      ${p.correcoes.map((c) => `<li>${data(c.corrigido_em)} ${hora(c.corrigido_em)} — ${esc(c.usuario)}: “${esc(c.anterior)}” → “${esc(c.nova)}”.
-        <em>Justificativa: ${esc(c.justificativa)}</em></li>`).join('')}</ul></div>` : '';
-    const prazosHist = (p.prazos || []).length ? `<div class="correcoes"><h3>Histórico de ajustes de prazo</h3><ul>
-      ${p.prazos.map((h) => `<li>${data(h.ajustado_em)} ${hora(h.ajustado_em)} — ${esc(h.usuario)}: ${h.anterior ? data(h.anterior + 'T12:00:00') : 'sem prazo'} → ${data(h.novo + 'T12:00:00')}.
-        <em>Justificativa: ${esc(h.justificativa)}</em></li>`).join('')}</ul></div>` : '';
+    const hist = [];
+    (p.correcoes || []).forEach((c) => hist.push({ em: c.corrigido_em, tit: 'Descrição corrigida', usr: c.usuario,
+      txt: `de “${c.anterior}” para “${c.nova}”`, just: c.justificativa }));
+    (p.prazos || []).forEach((h) => hist.push({ em: h.ajustado_em, tit: 'Prazo ajustado', usr: h.usuario,
+      txt: `${h.anterior ? data(`${h.anterior}T12:00:00`) : 'sem prazo'} → ${data(`${h.novo}T12:00:00`)}`, just: h.justificativa }));
+    hist.sort((x, y) => String(x.em).localeCompare(String(y.em)));
+    const histHtml = hist.length ? `<section class="det-sec"><h3>Histórico de alterações</h3><ul class="hist">
+      ${hist.map((h) => `<li><div class="hist-cab"><b>${esc(h.tit)}</b><span>${data(h.em)} ${hora(h.em)} · ${esc(h.usr)}</span></div>
+        <div>${esc(h.txt)}</div><div class="hist-just">Justificativa: ${esc(h.just)}</div></li>`).join('')}</ul></section>` : '';
+    const tipoTxt = `${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' · URGENTE' : ''}`;
     $('#detalhe-corpo').innerHTML = `
-      <div class="det-topo"><div><h2>${esc(p.numero)}</h2>${chip(p.status)}</div>
+      <div class="det-topo"><div><span class="det-rot">Protocolo</span><h2>${esc(p.numero)}</h2>
+        <div class="det-chips">${chip(p.status)}${p.urgente ? '<span class="chip urg">URGENTE</span>' : ''}</div></div>
         <button class="btn mini sec" type="button" data-fechar>Fechar ✕</button></div>
-      <div class="resumo-doc"><span>${esc(p.descricao)}</span>
-        ${p.n_correcoes ? `<div class="original">Descrição original: ${esc(p.descricao_original)}</div>` : ''}</div>
-      <div class="det-grade">
-        <div><b>Tipo</b>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' · URGENTE' : ''}</div>
-        <div><b>Prazo</b>${p.prazo_data ? `${data(p.prazo_data + 'T12:00:00')} ${prazoHtml(p)}` : 'Sem prazo informado'}</div>
-        <div><b>Onde está agora</b>${p.status === 'concluido' ? `Entregue (${esc(p.e3_setor || '')})` : ondeHtml(p)}</div>
-        <div><b>Setor de destino</b>${esc(p.setor_destino_nome || 'definido pelo ADM')}</div>
-      </div>
-      <div id="det-fotos"></div>
-      <ul class="linha-tempo">${linhas}</ul>${corr}${prazosHist}
-      <div class="modal-acoes">
-        ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir">Corrigir descrição</button>' : ''}
-        ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
-        <button class="btn" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
-        ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm">Confirmar recebimento — ADM</button>' : ''}
-        ${podeSetor ? `<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — ${papel === 'gestor' ? esc(p.setor_destino_nome || 'Setor') : 'Setor'}</button>` : ''}
+      <section class="det-sec"><h3>Documento</h3>
+        <div class="resumo-doc"><span>${esc(p.descricao)}</span>
+          ${p.n_correcoes ? `<div class="original">Descrição original: ${esc(p.descricao_original)}</div>` : ''}</div>
+        <dl class="det-grade">
+          <div><dt>Tipo</dt><dd>${esc(tipoTxt)}</dd></div>
+          <div><dt>Prazo</dt><dd>${p.prazo_data ? `${data(`${p.prazo_data}T12:00:00`)} ${prazoHtml(p)}` : 'Sem prazo informado'}</dd></div>
+          <div><dt>Onde está agora</dt><dd>${p.status === 'concluido' ? `Entregue (${esc(p.e3_setor || '')})` : ondeHtml(p)}</dd></div>
+          <div><dt>Setor de destino</dt><dd>${esc(p.setor_destino_nome || (p.status === 'pendente_adm' ? 'Será definido pelo ADM' : '—'))}</dd></div>
+          <div><dt>Registrado em</dt><dd>${data(p.created_at)} às ${hora(p.created_at, true)}</dd></div>
+          <div><dt>Registrado por</dt><dd>${esc(p.e1_usuario || '—')}</dd></div>
+        </dl></section>
+      ${(p.fotos || []).length ? '<section class="det-sec"><h3>Foto do envelope ou da capa</h3><div id="det-fotos"></div></section>' : ''}
+      <section class="det-sec"><h3>Tramitação</h3><ol class="linha-tempo">${linhas}</ol></section>
+      ${histHtml}
+      <div class="det-rodape">
+        <div class="det-rodape-sec">
+          ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir">Corrigir descrição</button>' : ''}
+          ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
+          <button class="btn sec" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
+          ${papel === 'gestor' ? '<button class="btn perigo" type="button" data-acao="excluir">Excluir protocolo</button>' : ''}
+        </div>
+        <div class="det-rodape-pri">
+          ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm">Confirmar recebimento — ADM</button>' : ''}
+          ${podeSetor ? `<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — ${papel === 'gestor' ? esc(p.setor_destino_nome || 'Setor') : 'Setor'}</button>` : ''}
+        </div>
       </div>`;
     carregarFotos(p);
   }
@@ -320,11 +344,11 @@
       try {
         const url = await baixarFoto(f.caminho);
         if (estado.aberto !== p) { URL.revokeObjectURL(url); return; }
-        const img = document.createElement('img'); img.className = 'foto-det'; img.alt = 'Foto do envelope/capa'; img.src = url;
-        img.title = 'Foto registrada na chegada'; img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
-        alvo.appendChild(img);
-        const leg = document.createElement('small'); leg.className = 'dica'; leg.textContent = `Foto registrada na chegada (${data(f.enviado_em)} ${hora(f.enviado_em)}).`;
-        alvo.appendChild(leg);
+        const fig = document.createElement('figure'); fig.className = 'foto-fig';
+        const img = document.createElement('img'); img.className = 'foto-det'; img.alt = 'Foto do envelope ou da capa'; img.src = url;
+        img.title = 'Clique para ampliar'; img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+        const leg = document.createElement('figcaption'); leg.textContent = `Registrada na chegada, em ${data(f.enviado_em)} às ${hora(f.enviado_em)}. Clique para ampliar.`;
+        fig.append(img, leg); alvo.appendChild(fig);
       } catch { alvo.textContent = 'Foto indisponível.'; }
     }
   }
@@ -365,7 +389,8 @@
   function limparFoto() {
     if (estado.fotoUrl) URL.revokeObjectURL(estado.fotoUrl);
     estado.fotoBlob = null; estado.fotoUrl = null;
-    const im = $('#foto-previa'); im.hidden = true; im.removeAttribute('src'); const i = $('#inp-foto'); if (i) i.value = '';
+    const im = $('#foto-previa'); im.hidden = true; im.removeAttribute('src'); $('#btn-foto-remover').hidden = true;
+    ['#inp-foto', '#inp-foto-camera'].forEach((q) => { const i = $(q); if (i) i.value = ''; });
   }
   // reduz a foto no navegador (máx. 1600 px, JPEG) — o banco aceita até 1,5 MB e só image/jpeg
   async function prepararFoto(arquivo) {
@@ -398,7 +423,7 @@
   function abrirConfirmar(etapa) {
     const p = estado.aberto, f = $('#form-confirmar');
     f.reset(); erroForm(f, ''); f.dataset.etapa = String(etapa); f.dataset.id = String(p.id);
-    $('#conf-titulo').textContent = etapa === 2 ? '2º recebimento — Administração (ADM)' : '3º recebimento — Super/Setor';
+    $('#conf-titulo').textContent = etapa === 2 ? '2º recebimento — Administração (ADM)' : '3º recebimento — Setor de destino';
     $('#conf-numero').textContent = p.numero; $('#conf-desc').textContent = p.descricao;
     const info = $('#conf-setor-info'); info.hidden = etapa !== 3;
     if (etapa === 3) {
@@ -431,9 +456,47 @@
     f.descricao_nova.value = p.descricao; $('#dlg-correcao').showModal(); f.descricao_nova.focus();
   }
 
+
+  // ------------------------------------------------------------------ exclusão de protocolo (gestor)
+  function abrirExclusao() {
+    const p = estado.aberto, f = $('#form-excluir');
+    f.reset(); erroForm(f, ''); f.dataset.id = String(p.id); $('#exc-numero').textContent = p.numero;
+    $('#dlg-excluir').showModal(); f.justificativa.focus();
+  }
+  async function apagarFotosDoBucket(caminhos) {
+    let falhas = 0; const token = await garantirToken();
+    for (const c of caminhos) {
+      try {
+        const r = await fetch(`${BASE}/storage/v1/object/protocolo-fotos/${c.split('/').map(encodeURIComponent).join('/')}`,
+          { method: 'DELETE', headers: { apikey: KEY, Authorization: `Bearer ${token}` } });
+        if (!r.ok && r.status !== 404) falhas += 1;
+      } catch { falhas += 1; }
+    }
+    return falhas;
+  }
+
+  // ------------------------------------------------------------------ logo do sistema (cabeçalho, login, impressões, aba do navegador)
+  const LOGO_OK = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+  function aplicarLogo(src) {
+    const ok = typeof src === 'string' && (LOGO_OK.test(src) || src === 'assets/logo.png');
+    estado.logo = ok; estado.logoSrc = ok ? src : null;
+    $$('img.logo').forEach((i) => { if (ok) { i.src = src; i.hidden = false; } else { i.hidden = true; i.removeAttribute('src'); } });
+    const fav = $('link[rel=icon]'); if (fav) fav.href = ok ? src : 'data:,';
+  }
+  async function carregarIdentidade() {
+    try {
+      const resp = await fetch(`${BASE}/rest/v1/rpc/identidade_publica`, { method: 'POST',
+        headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' }, body: '{}' });
+      if (resp.ok) { const j = await resp.json(); if (j && j.logo) { aplicarLogo(j.logo); return; } }
+    } catch { /* segue para o arquivo opcional */ }
+    const img = new Image();                              // alternativa: web/assets/logo.png (se existir)
+    img.onload = () => aplicarLogo('assets/logo.png');
+    img.src = 'assets/logo.png';
+  }
+
   // ------------------------------------------------------------------ IMPRESSÃO (livro e ficha)
   function cabecalhoImpressao(subtitulo) {
-    const marca = estado.logo ? '<img src="assets/logo.png" alt="">' : '<span class="p-cruz">+</span>';
+    const marca = estado.logoSrc ? `<img src="${estado.logoSrc}" alt="">` : '<span class="p-cruz">+</span>';
     return `<div class="p-cab"><div>${marca}</div>
       <div class="p-tit"><h1>LIVRO DE PROTOCOLO</h1>
         <div class="s">RECEBIMENTO E TRAMITAÇÃO DE DEMANDAS JUDICIAIS E CORRESPONDÊNCIAS</div>
@@ -471,8 +534,8 @@
         rows.forEach((x) => { sig[`${x.protocolo_id}:${x.etapa}`] = x.assinatura_png; });
       }
       const largura = new Array(11).fill(0);
-      const cab = ['Nº', '1º Receb.<br>Portaria<br>Data', 'Horário', 'DESCRIÇÃO DO DOCUMENTO', 'Assinatura<br>— Portaria',
-        '2º Receb.<br>ADM<br>Data', 'Horário', 'Assinatura<br>ADM', '3º Receb.<br>Super/Setor<br>Data', 'Horário', 'Assinatura<br>Super/Setor'];
+      const cab = ['Nº', '1º Recebimento<br>Portaria<br>Data', 'Hora', 'DESCRIÇÃO DO DOCUMENTO', 'Assinatura<br>— Portaria',
+        '2º Recebimento<br>ADM<br>Data', 'Hora', 'Assinatura<br>ADM', '3º Recebimento<br>Setor de destino<br>Data', 'Hora', 'Assinatura<br>Setor de destino'];
       const linhas = r.itens.map((x) => `<tr>
         <td><b>${esc(x.numero)}</b></td><td>${data(x.e1_em)}</td><td>${hora(x.e1_em)}</td>
         <td class="d">${x.tipo === 'judicial' ? '<b>[JUDICIAL' + (x.urgente ? ' URGENTE' : '') + ']</b> ' : ''}${esc(x.descricao)}${x.n_correcoes ? ' <i>(descrição corrigida)</i>' : ''}${x.prazo_data ? `<br><small>Prazo: ${data(x.prazo_data + 'T12:00:00')}</small>` : ''}</td>
@@ -516,10 +579,10 @@
           <tr><th>Setor de destino</th><td>${esc(p.setor_destino_nome || e3Setor(p) || '—')}</td></tr>
           <tr><th>Descrição do documento</th><td>${esc(p.descricao)}</td></tr></tbody></table>
         <div class="p-sec">Tramitação (3 etapas)</div>
-        <table class="p-ficha-tab p-etapas"><thead><tr><th class="n">Etapa</th><th>Data</th><th>Horário</th><th>Responsável</th><th>Assinatura</th></tr></thead>
+        <table class="p-ficha-tab p-etapas"><thead><tr><th class="n">Etapa</th><th>Data</th><th>Hora</th><th>Responsável</th><th>Assinatura</th></tr></thead>
           <tbody>${linhas}</tbody></table>${corr}
         <div class="p-sec">Selos de integridade (SHA-256)</div>${selos}
-        <p class="p-meta">Registrado em ${data(p.created_at)} às ${hora(p.created_at, true)} (horário do servidor). Datas, horários e responsáveis são gerados pelo
+        <p class="p-meta">Registrado em ${data(p.created_at)} às ${hora(p.created_at, true)} (hora do servidor). Datas, horas e responsáveis são gerados pelo
           sistema e não podem ser editados. Emitido por ${esc(estado.perfil.nome)} em ${data(agora)} ${hora(agora)}.</p>${rodapeImpressao()}`);
     } catch (e) { toast(e.message, true); }
   }
@@ -649,7 +712,7 @@
 
     $('#detalhe-corpo').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-acao]'); if (!b) return;
-      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
+      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, excluir: abrirExclusao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
     });
     document.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-fechar]')) ev.target.closest('dialog').close();
@@ -659,22 +722,52 @@
     $('#btn-imprimir-livro').addEventListener('click', imprimirLivro);
     $('#btn-novo').addEventListener('click', abrirNovo);
     $('#form-novo').tipo.addEventListener('change', ajustarTipo);
-    $('#inp-foto').addEventListener('change', async (ev) => {
-      const form = $('#form-novo'), arq = ev.target.files[0];
-      estado.fotoBlob = null; $('#foto-previa').hidden = true; if (!arq) return;
+    const usarFoto = async (arq, entrada) => {
+      const form = $('#form-novo');
+      estado.fotoBlob = null; $('#foto-previa').hidden = true; $('#btn-foto-remover').hidden = true; if (!arq) return;
       try {
         erroForm(form, ''); const blob = await prepararFoto(arq);
         if (estado.fotoUrl) URL.revokeObjectURL(estado.fotoUrl);
         estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
-        const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false;
-      } catch (e) { erroForm(form, e.message); ev.target.value = ''; }
+        const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false; $('#btn-foto-remover').hidden = false;
+      } catch (e) { erroForm(form, e.message); }
+      if (entrada) entrada.value = '';
+    };
+    $('#inp-foto').addEventListener('change', (ev) => usarFoto(ev.target.files[0], ev.target));
+    $('#inp-foto-camera').addEventListener('change', (ev) => usarFoto(ev.target.files[0], ev.target));
+    $('#btn-foto-arquivo').addEventListener('click', () => $('#inp-foto').click());
+    $('#btn-foto-remover').addEventListener('click', limparFoto);
+    // "Tirar foto": no celular abre a câmera do aparelho; no computador abre a webcam numa janela
+    let fluxo = null;
+    const pararCamera = () => { if (fluxo) fluxo.getTracks().forEach((t) => t.stop()); fluxo = null; $('#cam-video').srcObject = null; };
+    $('#btn-foto-camera').addEventListener('click', async () => {
+      const toque = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      if (toque || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $('#inp-foto-camera').click(); return; }
+      const dlg = $('#dlg-camera'), er = $('#cam-erro'); er.hidden = true; $('#btn-capturar').disabled = true;
+      dlg.showModal();
+      try {
+        fluxo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } }, audio: false });
+        const v = $('#cam-video'); v.srcObject = fluxo; await v.play().catch(() => {});
+        $('#btn-capturar').disabled = false;
+      } catch {
+        dlg.close(); toast('Não foi possível usar a câmera. Escolha uma foto do aparelho.', true); $('#inp-foto-camera').click();
+      }
     });
+    $('#btn-capturar').addEventListener('click', async () => {
+      const v = $('#cam-video'); if (!v.videoWidth) return;
+      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext('2d').drawImage(v, 0, 0);
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92));
+      $('#dlg-camera').close();
+      if (blob) await usarFoto(blob, null);
+    });
+    $('#dlg-camera').addEventListener('close', pararCamera);
     $('#form-novo').descricao.addEventListener('input', (ev) => { $('#cont-desc').textContent = ev.target.value.length; });
 
     $('#form-novo').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target;
       let ass; try { ass = assinaturaDe('novo'); } catch (e) { erroForm(form, e.message); return; }
-      if (fotoObrigatoria() && !estado.fotoBlob) { erroForm(form, 'Demandas judiciais exigem a foto do envelope/capa.'); return; }
+      if (fotoObrigatoria() && !estado.fotoBlob) { erroForm(form, 'Demandas judiciais exigem a foto do envelope ou da capa.'); return; }
       enviar(form, async () => {
         const caminho = estado.fotoBlob ? await enviarFoto(estado.fotoBlob) : null;
         return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: ass.png, p_assinatura_modo: ass.modo,
@@ -683,6 +776,19 @@
         $('#dlg-novo').close(); limparFoto();
         toast(`Protocolo ${r.numero} registrado — o ADM foi avisado.`); estado.pagina = 1; await recarregar();
       });
+    });
+
+
+    $('#form-excluir').addEventListener('submit', (ev) => {
+      ev.preventDefault(); const form = ev.target;
+      enviar(form, () => rpc('excluir_protocolo', { p_protocolo_id: Number(form.dataset.id), p_justificativa: form.justificativa.value,
+          p_pin_gestor: form.pin.value, p_excluir_trilha: form.trilha.checked }),
+        async (r) => {
+          const falhas = await apagarFotosDoBucket(r.fotos || []);
+          $('#dlg-excluir').close(); $('#dlg-detalhe').close(); estado.aberto = null;
+          toast(`Protocolo ${r.numero} excluído.${falhas ? ' A foto não pôde ser removida do armazenamento: remova-a no painel do Supabase.' : ''}`, !!falhas);
+          await recarregar();
+        });
     });
 
     $('#form-confirmar').addEventListener('submit', (ev) => {
@@ -767,13 +873,11 @@
     montarAssinaturas();
     painelMod = window.criarPainel(Object.freeze({
       $, $$, esc, data, hora, rpc, toast, erroForm, enviar, abrirDetalhe, imprimir, cabecalhoImpressao, rodapeImpressao,
-      estado: () => estado, limparSetores: () => { estado.setores = null; },
+      estado: () => estado, aplicarLogo, limparSetores: () => { estado.setores = null; },
       enderecoSistema: () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`),
     }));
     ligarEventos(); painelMod.ligar();
-    const img = new Image();                              // logotipo opcional: web/assets/logo.png
-    img.onload = () => { estado.logo = true; $$('img.logo').forEach((i) => { i.src = 'assets/logo.png'; i.hidden = false; }); };
-    img.src = 'assets/logo.png';
+    carregarIdentidade();
     const s = lerSessao();
     if (s) {
       estado.sessao = s;

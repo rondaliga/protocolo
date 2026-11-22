@@ -33,7 +33,7 @@ insert into public.parametros (chave, valor, descricao) values
   ('expediente_inicio',          '8',  'Hora de início do expediente (para horas úteis).'),
   ('expediente_fim',             '17', 'Hora de fim do expediente.'),
   ('alerta_prazo_dias',          '2',  'Avisar (e-mail/escalada) quando faltarem até N dias para o prazo.'),
-  ('foto_obrigatoria_judicial',  'true', 'Judiciais exigem foto do envelope/capa (true/false).'),
+  ('foto_obrigatoria_judicial',  'true', 'Judiciais exigem foto do envelope ou da capa (true/false).'),
   ('url_sistema',                '',   'Endereço do sistema (https://...), usado nos e-mails.')
 on conflict (chave) do nothing;
 
@@ -77,8 +77,8 @@ $$;
 -- Primeiro instante (hora local) dentro do expediente, em dia útil, a partir de p_l
 create or replace function public._util_local(p_l timestamp) returns timestamp
 language plpgsql stable security definer set search_path = public as $$
-declare v_ini time := make_time(public._param_int('expediente_inicio', 8), 0, 0);
-        v_fim time := make_time(public._param_int('expediente_fim', 17), 0, 0);
+declare v_ini time := public._param_hhmm('expediente_inicio', '08:00');
+        v_fim time := public._param_hhmm('expediente_fim', '17:00');
         l timestamp := p_l; d date;
 begin
   loop
@@ -93,8 +93,8 @@ end $$;
 
 create or replace function public._somar_horas_uteis(p_ts timestamptz, p_horas numeric) returns timestamptz
 language plpgsql stable security definer set search_path = public as $$
-declare v_ini time := make_time(public._param_int('expediente_inicio', 8), 0, 0);
-        v_fim time := make_time(public._param_int('expediente_fim', 17), 0, 0);
+declare v_ini time := public._param_hhmm('expediente_inicio', '08:00');
+        v_fim time := public._param_hhmm('expediente_fim', '17:00');
         l timestamp := public._util_local(p_ts at time zone public._fuso());
         resto int := round(p_horas * 60)::int; disp int;
 begin
@@ -331,7 +331,7 @@ begin
 
   if v_foto is null then
     if v_tipo = 'judicial' and public._param_text('foto_obrigatoria_judicial', 'true') = 'true' then
-      raise exception 'Demandas judiciais exigem a foto do envelope/capa do documento.';
+      raise exception 'Demandas judiciais exigem a foto do envelope ou da capa do documento.';
     end if;
   else
     if v_foto !~ ('^' || v_uid::text || '/[0-9a-f-]{36}\.jpg$') then raise exception 'Caminho da foto inválido.'; end if;
@@ -355,8 +355,8 @@ begin
   v_dias := case v_tipo when 'judicial' then public._param_int('prazo_judicial_dias', 5)
                         else public._param_int('prazo_correspondencia_dias', 0) end;
   v_prazo := case when v_dias > 0 then public._somar_dias_uteis((v_agora at time zone public._fuso())::date, v_dias) end;
-  v_sla := public._somar_horas_uteis(v_agora, case when v_urg then public._param_int('sla_adm_urgente_horas', 2)
-                                                   else public._param_int('sla_adm_horas', 4) end);
+  v_sla := public._somar_horas_uteis(v_agora, case when v_urg then (public._param_min('sla_adm_urgente_min', 120) / 60.0)
+                                                   else (public._param_min('sla_adm_min', 240) / 60.0) end);
 
   insert into public.protocolos (numero, descricao, status, created_at, created_by, tipo, urgente, prazo_data, sla_limite)
   values (v_num, v_desc, 'pendente_adm', v_agora, v_uid, v_tipo, v_urg, v_prazo, v_sla) returning id into v_id;
@@ -422,8 +422,8 @@ begin
             case when p_etapa = 3 then v_perfil.setor_id end, v_setor_nome, v_png, v_agora);
 
   if p_etapa = 2 then
-    v_sla := public._somar_horas_uteis(v_agora, case when v_p.urgente then public._param_int('sla_setor_urgente_horas', 4)
-                                                     else public._param_int('sla_setor_horas', 9) end);
+    v_sla := public._somar_horas_uteis(v_agora, case when v_p.urgente then (public._param_min('sla_setor_urgente_min', 240) / 60.0)
+                                                     else (public._param_min('sla_setor_min', 540) / 60.0) end);
     update public.protocolos set setor_destino_id = p_setor_destino_id, sla_limite = v_sla where id = v_p.id;
     perform public._enfileirar_email('encaminhado:' || v_p.id, 'ENCAMINHADO', v_p.id,
               public._emails(array['super_setor'], p_setor_destino_id),
@@ -638,7 +638,7 @@ begin
         end if;
       elsif v_dias <= v_aviso then
         if public._enfileirar_email('prazo:' || r.id, 'PRAZO_PROXIMO', r.id, v_dest,
-             '[Protocolo] ' || r.numero || ' vence em ' || v_dias || ' dia(s)',
+             '[Protocolo] ' || r.numero || ' vence em ' || v_dias || case when v_dias = 1 then ' dia' else ' dias' end,
              public._texto_email(r.numero, r.tipo, r.urgente, r.prazo_data, null, 'O prazo desta demanda está próximo e ela ainda não foi concluída.')) then
           v_n := v_n + 1;
           perform public._auditar(null, 'sistema', 'ALERTA_PRAZO_PROXIMO', r.id, jsonb_build_object('numero', r.numero, 'dias', v_dias));

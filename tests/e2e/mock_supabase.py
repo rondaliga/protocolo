@@ -33,6 +33,7 @@ def lit(v):
     if v is None: return "null"
     if isinstance(v, bool): return "true" if v else "false"
     if isinstance(v, (int, float)): return str(v)
+    if isinstance(v, (dict, list)): return "'" + json.dumps(v).replace("'", "''") + "'::jsonb"
     return "'" + str(v).replace("'", "''") + "'"
 
 
@@ -102,6 +103,19 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.responder(400, {"message": str(e)})
 
+    def do_DELETE(self):                    # Storage: apagar foto (a política fotos_delete decide)
+        u = urlparse(self.path); uid = self.uid(); pre = "/storage/v1/object/protocolo-fotos/"
+        if not u.path.startswith(pre): return self.responder(404, {"message": "rota fora do mock"})
+        if not uid: return self.responder(401, {"message": "JWT inválido"})
+        nome = unquote(u.path[len(pre):])
+        if not re.match(r"^[0-9a-f-]{36}/[0-9a-f-]{36}\.jpg$", nome): return self.responder(400, {"message": "nome inválido"})
+        try:
+            n = como(uid, f"with d as (delete from storage.objects where bucket_id='protocolo-fotos' and name='{nome}' returning 1) select count(*) from d")
+        except Exception as e:
+            return self.responder(400, {"message": str(e)})
+        if n != "1": return self.responder(404, {"message": "not found"})
+        ARQUIVOS.pop(nome, None); self.responder(200, {"message": "Successfully deleted"})
+
     def do_PUT(self):                       # GoTrue: PUT /auth/v1/user (troca de senha do próprio usuário)
         u = urlparse(self.path); uid = self.uid()
         if u.path != "/auth/v1/user": return self.responder(404, {"message": "rota fora do mock"})
@@ -143,6 +157,11 @@ class H(BaseHTTPRequestHandler):
             ARQUIVOS[nome] = dados
             return self.responder(200, {"Key": "protocolo-fotos/" + nome})
         m = re.match(r"^/rest/v1/rpc/([a-z_]+)$", u.path)
+        if m and m.group(1) == "identidade_publica":          # chamada anônima (tela de login)
+            try:
+                return self.responder(200, sql("begin;\nset local role anon;\nselect public.identidade_publica()::text;\ncommit;\n"))
+            except Exception as e:
+                return self.responder(400, {"message": str(e)})
         if m:
             uid = self.uid()
             if not uid: return self.responder(401, {"message": "JWT inválido"})

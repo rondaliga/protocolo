@@ -10,7 +10,7 @@
 window.APP_CONFIG = {
   SUPABASE_URL: 'https://SEU-PROJETO.supabase.co',
   SUPABASE_ANON_KEY: 'SUA_CHAVE_ANON_PUBLICA',
-  UNIDADE: 'CECAN - LNRCC',
+  UNIDADE: 'CECAN – LNRCC',
   TIMEZONE: 'America/Fortaleza',
   IDLE_MINUTES: 30,                 // logout automático por inatividade
   ASSINATURA_OBRIGATORIA: false     // true = exige desenho no quadro além do PIN

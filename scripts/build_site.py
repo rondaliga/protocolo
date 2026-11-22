@@ -60,7 +60,7 @@ def main():
     cfg = {
         "SUPABASE_URL": url,
         "SUPABASE_ANON_KEY": chave,
-        "UNIDADE": os.environ.get("UNIDADE", "CECAN - LNRCC"),
+        "UNIDADE": os.environ.get("UNIDADE", "CECAN – LNRCC"),
         "TIMEZONE": os.environ.get("TIMEZONE", "America/Fortaleza"),
         "IDLE_MINUTES": int(os.environ.get("IDLE_MINUTES", "30")),
         "ASSINATURA_OBRIGATORIA": os.environ.get("ASSINATURA_OBRIGATORIA", "false").lower() == "true",

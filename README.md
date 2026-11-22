@@ -55,8 +55,9 @@ legacy/                    versão Python anterior (referência)
    **Logo em seguida, rode também `supabase/02_prazos_alertas.sql`** (prazos, tempos máximos, foto, destino e alertas —
    veja a seção 4B). Pode rodar de novo sem problema.
    **Depois rode `supabase/03_painel_gestor.sql`** (painel de controle, gestor com acesso total, assinatura digitada,
-   trilha organizada — seção 4C). **Ordem obrigatória: schema.sql → 02 → 03** (rodar o 02 depois do 03 recria assinaturas antigas;
-   se isso acontecer, rode o 03 de novo).
+   trilha organizada — seção 4C).
+   **Por fim, rode `supabase/04_logo_horas_exclusoes.sql`** (logo, formatos de hora, salvar parâmetros de uma vez e exclusões — seção 4D).
+   **Ordem obrigatória: schema.sql → 02 → 03 → 04.** Se rodar o 02 ou o 03 de novo depois, rode o 04 mais uma vez.
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
 4. **Setores** (SQL Editor): ajuste à sua unidade.
@@ -164,7 +165,8 @@ A rotina **não usa a chave `service_role`**: o segredo só permite verificar SL
 ```sql
 select * from public.parametros;                                   -- veja todos os valores
 select public.admin_definir_parametro('prazo_judicial_dias', '10'); -- prazo padrão dos judiciais (dias úteis)
-select public.admin_definir_parametro('sla_adm_horas', '2');        -- tempo máximo do ADM
+select public.admin_definir_parametro('sla_adm_min', '1h30');       -- tempo máximo do ADM (aceita 90min, 1:30, 1h30, 1d…)
+select public.admin_definir_parametro('expediente_inicio', '7h30'); -- hora do início do expediente (HH:MM)
 select public.admin_definir_parametro('foto_obrigatoria_judicial', 'false');
 select public.admin_cadastrar_feriado('2027-02-09', 'Carnaval');    -- feriados móveis/estaduais/municipais
 select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superintendência','4455');
@@ -216,6 +218,30 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 - Teste no seu projeto real: crie um usuário pelo painel e entre com ele em outra janela.
 - As ressalvas de e-mail/sino/horário do GitHub Actions da versão 2 continuam valendo.
 
+## 4D. Versão 4 — logo, parâmetros, exclusões, detalhe do protocolo e câmera
+
+- **Logo do sistema**: *Painel de controle → Sistema → Identidade visual*. Escolha PNG, JPEG ou WebP (reduzida automaticamente), informe o PIN
+  do gestor e salve. O logo vale para o cabeçalho, a tela de login, a aba do navegador e **todas as impressões** (ficha, livro, trilha).
+  *Restaurar padrão* volta ao ícone original. Fica no banco (tabela `identidade`), então vale para todos os computadores.
+- **Prazos e regras**: tela única, com **um só botão "Salvar alterações"** (tudo ou nada). Expediente em HH:MM; tempos máximos aceitam
+  `4h30`, `4:30`, `90min`, `1,5` (horas) e `1d` (uma jornada), com prévia do valor entendido. Os valores antigos em horas foram convertidos
+  sozinhos (`sla_adm_horas` → `sla_adm_min`, etc.).
+- **Exclusões (somente gestor, com PIN e justificativa obrigatória)**:
+  - *Excluir protocolo* (no detalhe do protocolo): remove o protocolo, etapas, assinaturas, correções, histórico de prazo e a foto
+    (inclusive do armazenamento); opcionalmente remove também os eventos anteriores dele na trilha.
+  - *Excluir registros da trilha* (aba Trilha de auditoria): por período ou toda a trilha. **Exporte o CSV antes.**
+  - Toda exclusão gera um registro permanente na trilha (quem, quando, quantos itens, justificativa). Depois de apagar registros da trilha, a
+    verificação de integridade passa a atestar apenas os registros que restaram — por isso o ato fica registrado.
+  - Os demais caminhos continuam imutáveis: ninguém consegue apagar ou alterar registros pelo navegador sem passar por essas funções.
+- **Detalhe do protocolo reorganizado**: documento, ficha de dados (tipo, prazo, onde está, destino, registro), foto com legenda, linha do tempo
+  das etapas (data, responsável, setor, selo e **caixa de assinatura**) e histórico de alterações; botões de ação fixos no rodapé.
+- **Foto pelo celular**: "📷 Tirar foto" abre a câmera do aparelho; no computador abre a webcam numa janela; "🖼 Escolher da galeria" usa um arquivo.
+- **Assinatura**: a ordem agora é **Desenhar** (padrão) → **Digitar** → **Só o PIN**.
+- **Textos revisados** (aprovados por você): "Recebimento" por extenso, "Setor de destino" no lugar de "Super/Setor" e "Setor Final",
+  "Aguardando ADM", "tempo máximo" no lugar de "SLA", "Perfil" no lugar de "Papel", "logotipo", "avisos", "acesso/entrada" no lugar de "login",
+  plurais corretos, "Data e hora" e travessão em "CECAN – LNRCC". Se você definiu o nome da unidade no GitHub (variável `UNIDADE`),
+  atualize-o para o travessão; o padrão do projeto já foi trocado.
+
 ## 5. Segurança — decisões adotadas
 
 | Tema | Como foi resolvido |
@@ -259,7 +285,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 # Schema (RLS, sequência, imutabilidade, PIN, auditoria) — precisa de psql e um PostgreSQL 15+
 PGHOST=localhost PGUSER=postgres bash supabase/tests/run_local.sh        # banco descartável "protocolo_teste"
 
-# (o run_local.sh aplica schema.sql + 02_prazos_alertas.sql e aplica também 03_painel_gestor.sql e roda 211 verificações: horas úteis, SLA, foto, e-mails, painel, primeiro acesso, trilha e exportação)
+# (o run_local.sh aplica schema.sql + 02 + 03 + 04 e roda 252 verificações: horas úteis e formatos de hora, SLA, foto, e-mails, painel, primeiro acesso, trilha, exportação, logo e exclusões)
 
 # Navegador de ponta a ponta (opcional; precisa de Playwright e Pillow): site real + schema real
 bash tests/e2e/preparar_db.sh && SUPABASE_URL=http://127.0.0.1:5057 SUPABASE_ANON_KEY=chave-de-teste-0000000000 python3 scripts/build_site.py \

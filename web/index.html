@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- CSP: só scripts/estilos do próprio site e conexões ao Supabase do projeto.
        __SUPABASE_ORIGIN__ é substituído no build (scripts/build-site.sh). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src blob:; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex, nofollow">
-  <title>Livro de Protocolo · CECAN - LNRCC</title>
+  <title>Livro de Protocolo · CECAN – LNRCC</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -52,7 +52,7 @@
     <div class="usuario">
       <div class="usuario-txt"><strong id="usr-nome"></strong><span id="usr-papel"></span></div>
       <div class="sino-wrap">
-        <button class="btn mini sino" id="btn-sino" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Pendências e alertas">
+        <button class="btn mini sino" id="btn-sino" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Pendências e avisos">
           <span aria-hidden="true">🔔</span> Pendências <span class="sino-n" id="sino-n" hidden>0</span></button>
         <div class="sino-painel" id="painel-sino" hidden>
           <h3>Precisam da sua atenção</h3>
@@ -90,11 +90,11 @@
 
       <div class="kpis" id="kpis">
         <button type="button" class="kpi k-total" data-status=""><span class="kpi-rot">Total no livro</span><strong id="k-total">–</strong><small id="k-hoje">&nbsp;</small></button>
-        <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-rot">Pendente ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
-        <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-rot">Pendente Setor Final</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
+        <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-rot">Aguardando ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
+        <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-rot">Aguardando setor de destino</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
         <button type="button" class="kpi k-ok" data-status="concluido"><span class="kpi-rot">Concluído / Entregue</span><strong id="k-ok">–</strong><small>fluxo completo</small></button>
         <button type="button" class="kpi k-venc" data-alerta="vencidos"><span class="kpi-rot">Prazo vencido</span><strong id="k-venc">–</strong><small id="k-crit">&nbsp;</small></button>
-        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no SLA</small></button>
+        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no tempo máximo</small></button>
       </div>
 
       <form class="filtros" id="form-filtros" role="search">
@@ -104,18 +104,18 @@
         <label>Situação
           <select name="status">
             <option value="">Todas</option>
-            <option value="pendente_adm">Pendente ADM</option>
-            <option value="pendente_setor">Pendente Setor Final</option>
+            <option value="pendente_adm">Aguardando ADM</option>
+            <option value="pendente_setor">Aguardando setor de destino</option>
             <option value="concluido">Concluído / Entregue</option>
           </select>
         </label>
-        <label>Alertas
+        <label>Avisos
           <select name="alerta">
             <option value="">Todos</option>
             <option value="abertos">Em andamento</option>
             <option value="vencidos">Prazo vencido</option>
             <option value="criticos">Vence em até 2 dias</option>
-            <option value="sla">Parados além do tempo (SLA)</option>
+            <option value="sla">Parados além do tempo máximo</option>
           </select>
         </label>
         <label>Ordenar
@@ -140,7 +140,7 @@
         <table id="tabela">
           <thead>
             <tr><th>Nº</th><th>Descrição do documento</th><th>Onde está agora</th><th>Prazo</th>
-                <th>1º Receb. · Portaria</th><th>2º Receb. · ADM</th><th>3º Receb. · Super/Setor</th></tr>
+                <th>1º Recebimento · Portaria</th><th>2º Recebimento · ADM</th><th>3º Recebimento · Setor de destino</th></tr>
           </thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -165,10 +165,10 @@
             <option value="protocolo">Registro de protocolo</option>
             <option value="tramitacao">Recebimentos (etapas)</option>
             <option value="correcao">Correções de descrição</option>
-            <option value="prazo">Prazos e alertas</option>
-            <option value="acesso">Acessos (login/PIN)</option>
+            <option value="prazo">Prazos e avisos</option>
+            <option value="acesso">Acessos (entrada e PIN)</option>
             <option value="impressao">Impressões</option>
-            <option value="seguranca">Segurança (senha/PIN)</option>
+            <option value="seguranca">Segurança (senha e PIN)</option>
             <option value="administracao">Administração</option>
           </select>
         </label>
@@ -181,12 +181,13 @@
         <button class="btn primario" type="button" id="btn-verificar">Verificar integridade da trilha</button>
         <button class="btn sec" type="button" id="aud-csv">Exportar CSV</button>
         <button class="btn sec" type="button" id="aud-imprimir">Imprimir / PDF</button>
+        <button class="btn perigo" type="button" id="aud-excluir">Excluir registros…</button>
         <span id="resultado-verificacao" class="verificacao" role="status"></span>
         <span class="contagem" id="aud-contagem" role="status"></span>
       </div>
       <div class="tabela-wrap">
         <table class="tabela-aud">
-          <thead><tr><th>Data / hora</th><th>Tipo</th><th>Usuário</th><th>Ação</th><th>Protocolo</th><th>O que aconteceu</th></tr></thead>
+          <thead><tr><th>Data e hora</th><th>Tipo</th><th>Usuário</th><th>Ação</th><th>Protocolo</th><th>O que aconteceu</th></tr></thead>
           <tbody id="tbody-audit"></tbody>
         </table>
       </div>
@@ -211,9 +212,9 @@
         <div class="barra">
           <button class="btn primario" type="button" id="usr-novo">+ Novo usuário</button>
           <input type="search" id="usr-busca" placeholder="Buscar por nome ou e-mail" maxlength="100" aria-label="Buscar usuário">
-          <select id="usr-filtro-papel" aria-label="Filtrar por papel">
-            <option value="">Todos os papéis</option><option value="portaria">Portaria</option><option value="adm">ADM</option>
-            <option value="super_setor">Super/Setor</option><option value="gestor">Gestor</option>
+          <select id="usr-filtro-papel" aria-label="Filtrar por perfil">
+            <option value="">Todos os perfis</option><option value="portaria">Portaria</option><option value="adm">ADM</option>
+            <option value="super_setor">Setor de destino</option><option value="gestor">Gestor</option>
           </select>
           <select id="usr-filtro-ativo" aria-label="Filtrar por situação">
             <option value="ativos">Somente ativos</option><option value="inativos">Somente inativos</option><option value="">Todos</option>
@@ -222,7 +223,7 @@
         </div>
         <div class="tabela-wrap">
           <table class="tabela-usr">
-            <thead><tr><th>Usuário</th><th>Papel / setor</th><th>Situação</th><th>Último acesso</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Usuário</th><th>Perfil / setor</th><th>Situação</th><th>Último acesso</th><th>Ações</th></tr></thead>
             <tbody id="tbody-usr"></tbody>
           </table>
         </div>
@@ -240,7 +241,15 @@
 
       <div id="sub-parametros" class="sub" hidden>
         <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
-        <div id="lista-param" class="lista-param"></div>
+        <form id="form-param" class="param-form" autocomplete="off" novalidate>
+          <div id="param-corpo"></div>
+          <div class="param-barra">
+            <span id="param-estado" class="param-estado" role="status">Nenhuma alteração pendente.</span>
+            <span class="erro" id="param-erro" role="alert" hidden></span>
+            <button type="button" class="btn sec" id="param-descartar" disabled>Descartar</button>
+            <button type="submit" class="btn primario" id="param-salvar" disabled>Salvar alterações</button>
+          </div>
+        </form>
       </div>
 
       <div id="sub-feriados" class="sub" hidden>
@@ -259,6 +268,26 @@
       </div>
 
       <div id="sub-sistema" class="sub" hidden>
+        <form id="form-logo" class="cartao-cfg" autocomplete="off">
+          <h3>Identidade visual</h3>
+          <div class="logo-cfg">
+            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true">+</span></div>
+            <div class="logo-controles">
+              <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
+                Aceita PNG, JPEG ou WebP; a imagem é reduzida automaticamente. Prefira fundo transparente ou branco.</p>
+              <input type="file" id="logo-arquivo" accept="image/png,image/jpeg,image/webp" hidden>
+              <div class="logo-linha">
+                <button type="button" class="btn sec" id="logo-escolher">Escolher imagem…</button>
+                <label class="logo-pin">PIN do gestor
+                  <input class="pin" id="logo-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off">
+                </label>
+                <button type="submit" class="btn primario" id="logo-salvar" disabled>Salvar logotipo</button>
+                <button type="button" class="btn sec" id="logo-restaurar">Restaurar padrão</button>
+              </div>
+              <p class="erro" role="alert" hidden></p>
+            </div>
+          </div>
+        </form>
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
       </div>
@@ -272,7 +301,7 @@
     <h2>Novo registro — 1ª etapa (Portaria)</h2>
     <div class="aviso" role="note">
       <strong>Orientação de preenchimento:</strong>
-      Preencher um registro por documento. Informar data e horário em cada etapa e colher a assinatura de quem recebe.
+      Preencher um registro por documento. Informar data e hora em cada etapa e colher a assinatura de quem recebe.
       Evitar registrar informações pessoais ou sigilosas além do necessário para identificar o documento.
     </div>
     <div class="linha2">
@@ -287,16 +316,22 @@
     <p class="dica" id="dica-tipo"></p>
     <label>Descrição do documento
       <textarea name="descricao" rows="3" maxlength="300" required
-        placeholder="Ex.: Ofício nº 123/2026 - 2ª Vara Cível  |  Carta A.R. Correios"></textarea>
+        placeholder="Ex.: Ofício nº 123/2026 — 2ª Vara Cível  |  Carta A.R. Correios"></textarea>
       <small class="contador"><span id="cont-desc">0</span>/300</small>
     </label>
     <fieldset class="foto-box">
-      <legend>Foto do envelope / capa <span id="foto-obrig"></span></legend>
-      <input type="file" name="foto" id="inp-foto" accept="image/*" capture="environment">
+      <legend>Foto do envelope ou da capa <span id="foto-obrig"></span></legend>
+      <div class="foto-acoes">
+        <button type="button" class="btn sec" id="btn-foto-camera">📷 Tirar foto</button>
+        <button type="button" class="btn sec" id="btn-foto-arquivo">🖼 Escolher da galeria</button>
+        <button type="button" class="btn sec mini" id="btn-foto-remover" hidden>Remover foto</button>
+      </div>
+      <input type="file" id="inp-foto-camera" accept="image/*" capture="environment" hidden>
+      <input type="file" name="foto" id="inp-foto" accept="image/*" hidden>
       <img id="foto-previa" alt="Prévia da foto" hidden>
-      <small class="dica">Fotografe a capa/envelope no ato da chegada. Não fotografe o conteúdo do documento.</small>
+      <small class="dica">Fotografe a capa ou o envelope no ato da chegada. Não fotografe o conteúdo do documento.</small>
     </fieldset>
-    <p class="dica">Nº do protocolo, data e horário são gerados pelo servidor e não podem ser alterados.</p>
+    <p class="dica">Nº do protocolo, data e hora são gerados pelo servidor e não podem ser alterados.</p>
     <fieldset data-assinatura="novo"></fieldset>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
@@ -304,6 +339,76 @@
       <button type="submit" class="btn primario">Registrar recebimento</button>
     </div>
   </form>
+</dialog>
+
+<!-- ============ MODAL: EXCLUIR PROTOCOLO (gestor) ============ -->
+<dialog id="dlg-excluir">
+  <form id="form-excluir" class="modal-corpo" autocomplete="off">
+    <h2>Excluir protocolo <span id="exc-numero"></span></h2>
+    <div class="aviso perigo" role="note">
+      <strong>Esta ação é definitiva.</strong> Serão removidos o protocolo, as etapas e assinaturas, as correções, o histórico de prazo e a foto.
+      O registro da exclusão (quem, quando e a justificativa) permanece na trilha de auditoria.
+    </div>
+    <label>Justificativa (obrigatória)
+      <textarea name="justificativa" rows="3" minlength="10" maxlength="500" required placeholder="Ex.: Registro em duplicidade do ofício nº 123/2026."></textarea>
+    </label>
+    <label class="chk neutro"><input type="checkbox" name="trilha"> Remover também da trilha os eventos anteriores deste protocolo</label>
+    <label>Seu PIN de gestor
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <label class="chk neutro"><input type="checkbox" name="ciente" required> Entendo que não é possível desfazer</label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn perigo">Excluir definitivamente</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: EXCLUIR REGISTROS DA TRILHA (gestor) ============ -->
+<dialog id="dlg-limpar-trilha">
+  <form id="form-limpar-trilha" class="modal-corpo" autocomplete="off">
+    <h2>Excluir registros da trilha</h2>
+    <div class="aviso perigo" role="note">
+      <strong>Esta ação é definitiva.</strong> Recomenda-se exportar o CSV antes. A exclusão em si fica registrada na trilha
+      (quem, quando, quantos registros e a justificativa) e a verificação de integridade passa a valer para os registros que restarem.
+    </div>
+    <fieldset class="opcoes-exc">
+      <legend>O que excluir</legend>
+      <label class="chk neutro"><input type="radio" name="modo" value="periodo" checked> Somente um período</label>
+      <div class="linha2" id="exc-datas">
+        <label>De <input type="date" name="data_ini"></label>
+        <label>Até <input type="date" name="data_fim"></label>
+      </div>
+      <label class="chk neutro"><input type="radio" name="modo" value="tudo"> Toda a trilha</label>
+    </fieldset>
+    <label>Justificativa (obrigatória)
+      <textarea name="justificativa" rows="3" minlength="10" maxlength="500" required placeholder="Ex.: Descarte de registros de teste antes da entrada em produção."></textarea>
+    </label>
+    <label>Seu PIN de gestor
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <label class="chk neutro"><input type="checkbox" name="ciente" required> Entendo que não é possível desfazer</label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn perigo">Excluir definitivamente</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ MODAL: CÂMERA (computador com webcam; no celular abre a câmera do aparelho) ============ -->
+<dialog id="dlg-camera">
+  <div class="modal-corpo">
+    <h2>Fotografar o envelope ou a capa</h2>
+    <video id="cam-video" class="cam-video" autoplay playsinline muted></video>
+    <p class="dica">Enquadre somente a capa ou o envelope. Não fotografe o conteúdo do documento.</p>
+    <p class="erro" id="cam-erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="button" class="btn primario" id="btn-capturar">📷 Capturar</button>
+    </div>
+  </div>
 </dialog>
 
 <!-- ============ PAINEL: DETALHE ============ -->
@@ -319,7 +424,7 @@
       <select name="destino" id="sel-destino"></select>
     </label>
     <fieldset data-assinatura="conf"></fieldset>
-    <p class="dica">Data e horário do recebimento serão registrados automaticamente pelo servidor.</p>
+    <p class="dica">Data e hora do recebimento serão registrados automaticamente pelo servidor.</p>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
       <button type="button" class="btn sec" data-fechar>Cancelar</button>
@@ -400,18 +505,18 @@
 <dialog id="dlg-usuario">
   <form id="form-usuario" class="modal-corpo" autocomplete="off">
     <h2 id="usr-titulo">Novo usuário</h2>
-    <label>E-mail (será o login)
+    <label>E-mail (será o usuário de acesso)
       <input type="email" name="email" maxlength="200" required autocomplete="off">
     </label>
     <label>Nome completo
       <input type="text" name="nome" maxlength="120" required autocomplete="off">
     </label>
     <div class="linha2">
-      <label>Papel
+      <label>Perfil
         <select name="papel" required>
           <option value="portaria">Portaria (1ª etapa)</option>
           <option value="adm">Administração — ADM (2ª etapa)</option>
-          <option value="super_setor">Super/Setor (3ª etapa)</option>
+          <option value="super_setor">Setor de destino (3ª etapa)</option>
           <option value="gestor">Gestor (acesso total)</option>
         </select>
       </label>
