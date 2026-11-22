@@ -1,0 +1,12 @@
+# gerado pelo build / configuração local
+dist/
+web/config.js
+.env
+.env.*
+# legado Python
+legacy/instance/
+__pycache__/
+*.pyc
+.venv/
+# nunca versionar chaves
+*service_role*
