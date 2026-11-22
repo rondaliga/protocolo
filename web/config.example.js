@@ -12,6 +12,6 @@ window.APP_CONFIG = {
   SUPABASE_ANON_KEY: 'SUA_CHAVE_ANON_PUBLICA',
   UNIDADE: 'CECAN – LNRCC',
   TIMEZONE: 'America/Fortaleza',
-  IDLE_MINUTES: 30,                 // logout automático por inatividade
+  IDLE_MINUTES: 360,                // inatividade (min) usada só se o banco não responder; o valor real é ajustado em Prazos e regras
   ASSINATURA_OBRIGATORIA: false     // true = exige desenho no quadro além do PIN
 };

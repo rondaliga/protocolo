@@ -36,9 +36,10 @@ sem internet). Ele **não é usado** pela publicação no GitHub Pages.
 web/                       site estático (é o que vai ao GitHub Pages)
   index.html  style.css  app.js  config.example.js  assets/ (coloque logo.png aqui)
 supabase/
-  schema.sql               rodar UMA vez no SQL Editor do Supabase
+  schema.sql, 02…07_*.sql  migrações, em ordem; instalacao_completa.sql reúne todas
   tests/                   58 testes do schema (PostgreSQL local descartável)
-scripts/build_site.py      gera dist/ (config.js + CSP) — usado pelo workflow
+scripts/build_site.py      gera dist/ (config.js + CSP, CSS enxuto, versão por conteúdo) — usado pelo workflow
+scripts/gerar_instalacao.py  gera supabase/instalacao_completa.sql
 .github/workflows/deploy.yml
 tests/e2e/                 teste no navegador contra o schema real (opcional)
 legacy/                    versão Python anterior (referência)
@@ -57,7 +58,12 @@ legacy/                    versão Python anterior (referência)
    **Depois rode `supabase/03_painel_gestor.sql`** (painel de controle, gestor com acesso total, assinatura digitada,
    trilha organizada — seção 4C).
    **Por fim, rode `supabase/04_logo_horas_exclusoes.sql`** (logo, formatos de hora, salvar parâmetros de uma vez e exclusões — seção 4D).
-   **Ordem obrigatória: schema.sql → 02 → 03 → 04.** Se rodar o 02 ou o 03 de novo depois, rode o 04 mais uma vez.
+   **Depois rode `supabase/05_melhorias.sql`** (versão do banco, índices, backup e retenção — seção 4E).
+   **Por fim, rode `supabase/06_inatividade.sql`** (tempo de inatividade ajustável — seção 4E).
+   **Depois rode `supabase/07_mfa.sql`** (verificação em duas etapas — seção 4F).
+   **Ordem obrigatória: schema.sql → 02 → 03 → 04 → 05 → 06 → 07.** Se rodar um arquivo antigo de novo, rode os seguintes em seguida.
+   **Atalho:** cole `supabase/instalacao_completa.sql` (os sete arquivos na ordem certa, gerado por `scripts/gerar_instalacao.py`).
+   Serve para instalação nova **e** para atualização, e pode ser executado quantas vezes quiser.
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
 4. **Setores** (SQL Editor): ajuste à sua unidade.
@@ -93,7 +99,7 @@ legacy/                    versão Python anterior (referência)
    | `SUPABASE_URL` | `https://xxxx.supabase.co` |
    | `SUPABASE_ANON_KEY` | chave anon/publishable |
    | `UNIDADE` *(opcional)* | `CECAN - LNRCC` |
-   | `IDLE_MINUTES` *(opcional)* | minutos de inatividade até o logout (padrão 30) |
+   | `IDLE_MINUTES` *(opcional)* | reserva (padrão 360 = 6 h) usada só se o banco não responder; o tempo real é ajustado em **Prazos e regras → Segurança da sessão** |
    | `ASSINATURA_OBRIGATORIA` *(opcional)* | `true` exige também o desenho no quadro |
 
 4. Faça um *push* em `main` (ou **Actions → Publicar no GitHub Pages → Run workflow**). O workflow:
@@ -242,6 +248,86 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
   plurais corretos, "Data e hora" e travessão em "CECAN – LNRCC". Se você definiu o nome da unidade no GitHub (variável `UNIDADE`),
   atualize-o para o travessão; o padrão do projeto já foi trocado.
 
+## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
+
+**Instalação e manutenção**
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 7 de 7") e é idempotente.
+- `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
+
+**Inatividade**
+- O tempo para o logout automático agora é **ajustável** em Painel → Prazos e regras → *Segurança da sessão* (de 5 min a 24 h; aceita `6h`, `6:00`, `90min`, `1,5`). O **padrão passou de 30 min para 6 horas** (`06_inatividade.sql`).
+- Vale para todos os perfis no próximo login (o gestor que altera já o recebe na hora). A mudança fica na trilha. Ao voltar de suspensão do computador, o navegador confere o tempo imediatamente.
+- A contagem é feita no navegador (cliques, teclas e rolagem reiniciam). `IDLE_MINUTES` no `config.js` virou apenas reserva caso o banco não responda.
+- Atenção: quanto maior o tempo, maior a janela em que um computador deixado aberto continua logado. Em computador compartilhado (portaria), considere um valor menor.
+
+**Desempenho**
+- Novos índices (setor de destino, criador, etapas, fotos, trilha por data e por ação). A listagem do livro e da trilha já era paginada no servidor.
+- O build minifica o CSS e acrescenta `?v=<hash>` aos arquivos: o navegador só baixa o que mudou. O logotipo fica em cache na sessão.
+
+**Padronização**
+- O semáforo "vence em breve", o card do painel e o filtro agora seguem o parâmetro **Avisar com antecedência (dias)** (antes era fixo em 2).
+- Datas em `dd/mm/aaaa` e horas em `HH:MM`, no fuso da unidade, em telas, impressões e CSV; cabeçalho único em todas as impressões (livro, ficha, trilha).
+
+**Segurança e LGPD**
+- Ao abrir a trilha, o selo "Trilha íntegra" aparece sozinho (o botão continua para refazer).
+- Aba Painel → Sistema → **Dados, backup e retenção**: baixa o backup JSON (protocolos, etapas e trilha, sem as imagens das assinaturas; o ato fica na trilha como "Backup exportado") e consulta quantos protocolos concluídos passaram do prazo de guarda. A consulta só informa; excluir continua exigindo justificativa e PIN do gestor.
+- Freio de tentativas no login: 5 erros seguidos bloqueiam novas tentativas por 60 s **neste navegador**. É uma barreira de conveniência; a proteção real contra força bruta é o limite de taxa do próprio Supabase (Authentication → Rate Limits).
+
+**Usabilidade**
+- Link "Ir para o conteúdo" (teclado), foco visível em links e respeito a "reduzir movimento".
+- Os filtros de status, alerta e ordem são lembrados por usuário neste navegador (busca e datas, não).
+- Instalável no celular ("Adicionar à tela inicial") por `manifest.webmanifest`. O ícone do atalho é o padrão (`assets/icone.svg`): o logotipo trocado no painel vale para o sistema e as impressões, mas não para o ícone do atalho. Não há modo offline.
+
+### Guia rápido por perfil
+| Perfil | O que faz |
+|---|---|
+| Portaria | Registra o protocolo (foto, descrição, assinatura Desenhar/Digitar/PIN) e imprime a ficha. |
+| ADM | Recebe, ajusta prazo com justificativa e PIN, encaminha ao setor. |
+| Setor | Confirma o recebimento do que foi destinado ao seu setor. |
+| Gestor | Tudo acima, mais painel (usuários, setores, regras, feriados, logotipo), trilha, backup, retenção e exclusões. |
+
+### Checklist de implantação
+1. Projeto Supabase criado (São Paulo) e cadastro público desligado.
+2. `instalacao_completa.sql` executado; painel mostra "7 de 7".
+3. Variáveis do GitHub (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `UNIDADE`, `TIMEZONE`) e Pages em "GitHub Actions".
+4. Primeiro gestor criado e senha/PIN trocados no primeiro acesso.
+5. Rate limits do Supabase revisados; baixar um backup e conferir a trilha ("Trilha íntegra").
+5b. Segredos `SUPABASE_DB_URL` e `BACKUP_PASSPHRASE` cadastrados e um backup de teste rodado em *Actions*; o gestor ativou as **2 etapas** (e há pelo menos dois gestores antes de ligar a exigência).
+6. Fazer um protocolo de teste com os quatro perfis.
+
+## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
+
+### Backup agendado e cifrado (`.github/workflows/backup.yml`)
+Todo domingo às 03:00 (Fortaleza) — ou quando você clicar em *Actions → Backup semanal do banco → Run workflow* — o GitHub gera um `pg_dump` do schema `public` (protocolos, etapas, trilha, parâmetros, perfis, setores, logotipo), **cifra com AES-256** e guarda como artefato por 90 dias. O script confere que o dump é legível e que as tabelas principais estão dentro, e testa a decifragem antes de terminar.
+
+Para ligar (uma vez), em *Settings → Secrets and variables → Actions → Secrets*:
+| Segredo | O que é |
+|---|---|
+| `SUPABASE_DB_URL` | String de conexão do banco (Supabase → Connect → *Session pooler*, formato `postgresql://postgres.xxxx:SENHA@aws-0-….pooler.supabase.com:5432/postgres`). Use o pooler: a conexão direta costuma ser só IPv6, que o GitHub não alcança. |
+| `BACKUP_PASSPHRASE` | Frase longa (16+ caracteres) para cifrar. **Guarde-a fora do GitHub**: sem ela o backup não abre. |
+
+Variáveis opcionais: `BACKUP_PG_VERSION` (padrão 17; use a versão do seu projeto Supabase) e `BACKUP_RETENCAO_DIAS` (padrão 90). Sem os segredos o fluxo só avisa e não falha.
+
+**Restaurar** (num banco novo com o `instalacao_completa.sql` já aplicado, ou vazio):
+```bash
+gpg --output backup.dump --decrypt protocolo-AAAAMMDD-HHMM.dump.gpg
+pg_restore --no-owner --clean --if-exists --dbname "$SUPABASE_DB_URL" backup.dump
+```
+**O que o backup NÃO cobre:** as **fotos** (ficam no Storage, fora do `pg_dump`) e as **contas de login** (schema `auth`, com as senhas). Para as contas, recadastre os usuários pelo painel; para as fotos, use o backup do próprio Supabase ou copie o bucket `protocolo-fotos`. O repositório deve ser **privado**: mesmo cifrado, o arquivo contém dados pessoais (LGPD).
+O botão "Baixar backup (JSON)" do painel continua útil para uma cópia imediata.
+
+### Verificação em duas etapas (TOTP) — recomendada ao gestor
+- Qualquer usuário pode ativar em **2 etapas** (botão no topo): escaneia o QR Code num aplicativo autenticador (Google/Microsoft Authenticator, Authy, 2FAS…) e confirma com o primeiro código. Depois, todo login pede a senha **e** o código.
+- **Exigência para o gestor:** Painel → Prazos e regras → *Regras gerais* → "Exigir verificação em duas etapas…". Ao ligar, cada gestor é obrigado a cadastrar no próximo acesso (e não consegue desativar).
+- **Proteção no servidor, não só na tela:** quem tem o fator ativo e ainda não digitou o código (sessão `aal1`) é tratado como não autenticado pelo banco — a função `public._uid()` (que substitui `auth.uid()` em todas as políticas e funções) devolve vazio. Mesmo chamando a API direto com a senha, nada é lido nem alterado. O teste automatizado prova isso.
+- Cadastro, QR e conferência do código são do **Supabase Auth (MFA/TOTP)**: nenhum segredo passa pelo nosso código. No painel do Supabase, confira *Authentication → Sign In / Providers → Multi-Factor Authentication* com **TOTP** ativado (padrão).
+- **Perdeu o celular?** Outro gestor usa Painel → Usuários → **Redefinir 2 etapas** (pede o PIN do gestor; derruba as sessões; fica na trilha). Se o único gestor perdeu o aparelho, rode no SQL Editor: `select public.admin_resetar_mfa('gestor@exemplo.com');` e entre só com a senha. **Ao ligar a exigência, garanta que existe mais de um gestor.**
+- Eventos na trilha: *Verificação em 2 etapas ativada / desativada / redefinida*.
+
+### Aviso antes do logout e rascunho
+- No último minuto de inatividade aparece "Você ainda está aí?" com contagem regressiva; *Continuar conectado* reinicia o tempo.
+- O formulário de **novo protocolo** guarda um rascunho (tipo, urgência, descrição e foto) no navegador a cada alteração. Fica em `sessionStorage` (some ao fechar a aba), por usuário, por 24 h. **Assinatura e PIN nunca são guardados.** Sair voluntariamente apaga o rascunho; o logout por inatividade o mantém para a pessoa retomar. Há o botão *Descartar rascunho*.
+
 ## 5. Segurança — decisões adotadas
 
 | Tema | Como foi resolvido |
@@ -285,21 +371,21 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 # Schema (RLS, sequência, imutabilidade, PIN, auditoria) — precisa de psql e um PostgreSQL 15+
 PGHOST=localhost PGUSER=postgres bash supabase/tests/run_local.sh        # banco descartável "protocolo_teste"
 
-# (o run_local.sh aplica schema.sql + 02 + 03 + 04 e roda 252 verificações: horas úteis e formatos de hora, SLA, foto, e-mails, painel, primeiro acesso, trilha, exportação, logo e exclusões)
+# (o run_local.sh aplica schema.sql + 02 + 03 + 04 + 05 + 06 + 07 (do 05 em diante, cada um duas vezes, para provar a idempotência) e roda 300 verificações: horas úteis e formatos de hora, SLA, foto, e-mails, painel, primeiro acesso, trilha, exportação, logo e exclusões)
 
 # Navegador de ponta a ponta (opcional; precisa de Playwright e Pillow): site real + schema real
 bash tests/e2e/preparar_db.sh && SUPABASE_URL=http://127.0.0.1:5057 SUPABASE_ANON_KEY=chave-de-teste-0000000000 python3 scripts/build_site.py \
   && python3 tests/e2e/run_e2e.py ./saida-e2e
 ```
-O workflow executa os testes do schema antes de cada publicação. O E2E usa um *mini-PostgREST* de teste
+O workflow executa os testes do schema, confere se `instalacao_completa.sql` está atualizado e a instala duas vezes num banco novo antes de cada publicação. O E2E usa um *mini-PostgREST* de teste
 (`tests/e2e/mock_supabase.py`) que repassa as chamadas ao PostgreSQL sob o papel `authenticated` — RLS e RPCs são as reais;
 só o transporte HTTP é simulado. **Valide também no seu projeto Supabase real** após publicar (faça um protocolo de teste
 com os quatro perfis).
 
 ## 8. Próximos passos sugeridos
 Cadastro de MFA (TOTP); relatório mensal de
-cumprimento de prazos por setor; push com o navegador fechado; rotina de backup automatizada (GitHub Actions + `pg_dump`).
+cumprimento de prazos por setor; push com o navegador fechado; funcionamento offline (service worker).
 
 
 ## Nota: reexecutar o schema.sql
-Se o `schema.sql` for executado novamente em um banco já migrado, rode em seguida `02_prazos_alertas.sql`, `03_painel_gestor.sql` e `04_logo_horas_exclusoes.sql`, nesta ordem, para restaurar a visão `v_livro` ampliada, as funções e as permissões. O erro `42P16: cannot drop columns from view` ocorria porque `create or replace view` não pode remover colunas; o `schema.sql` agora recria a visão com `drop view if exists`.
+Se o `schema.sql` for executado novamente em um banco já migrado, rode em seguida `02_prazos_alertas.sql`, `03_painel_gestor.sql`, `04_logo_horas_exclusoes.sql`, `05_melhorias.sql`, `06_inatividade.sql` e `07_mfa.sql`, nesta ordem (ou apenas `instalacao_completa.sql`), para restaurar a visão `v_livro` ampliada, as funções e as permissões. O erro `42P16: cannot drop columns from view` ocorria porque `create or replace view` não pode remover colunas; o `schema.sql` agora recria a visão com `drop view if exists`.

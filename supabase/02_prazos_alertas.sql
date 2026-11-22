@@ -124,14 +124,20 @@ language sql stable set search_path = public as $$
               else p_prazo - (now() at time zone public._fuso())::date end
 $$;
 
--- semáforo: concluido | sem_prazo | vencido | critico (<=2 dias) | atencao (<=5) | ok
+-- antecedência do aviso (dias), lida com privilégio do dono porque as funções chamadoras rodam com o usuário logado
+create or replace function public._alerta_dias() returns int
+language sql stable security definer set search_path = public as $$
+  select greatest(public._param_int('alerta_prazo_dias', 2), 0)
+$$;
+
+-- semáforo: concluido | sem_prazo | vencido | critico (<= "alerta_prazo_dias", padrão 2) | atencao (<= 5, ou o alerta se maior) | ok
 create or replace function public._semaforo(p_prazo date, p_status text) returns text
 language sql stable set search_path = public as $$
   select case when p_status = 'concluido' then 'concluido'
               when p_prazo is null then 'sem_prazo'
               when p_prazo - (now() at time zone public._fuso())::date < 0 then 'vencido'
-              when p_prazo - (now() at time zone public._fuso())::date <= 2 then 'critico'
-              when p_prazo - (now() at time zone public._fuso())::date <= 5 then 'atencao'
+              when p_prazo - (now() at time zone public._fuso())::date <= public._alerta_dias() then 'critico'
+              when p_prazo - (now() at time zone public._fuso())::date <= greatest(public._alerta_dias(), 5) then 'atencao'
               else 'ok' end
 $$;
 
@@ -251,13 +257,13 @@ on conflict (id) do update
 drop policy if exists fotos_insert on storage.objects;
 create policy fotos_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'protocolo-fotos' and public.meu_papel() = 'portaria'
-              and (storage.foldername(name))[1] = auth.uid()::text);
+              and (storage.foldername(name))[1] = public._uid()::text);
 
 -- Lê quem enviou (a própria pasta) ou quem pode ver o protocolo ao qual a foto foi vinculada
 drop policy if exists fotos_select on storage.objects;
 create policy fotos_select on storage.objects for select to authenticated
   using (bucket_id = 'protocolo-fotos'
-         and ((storage.foldername(name))[1] = auth.uid()::text
+         and ((storage.foldername(name))[1] = public._uid()::text
               or exists (select 1 from public.protocolo_fotos f
                           where f.caminho = name and public.pode_ver_protocolo(f.protocolo_id))));
 
@@ -312,7 +318,7 @@ create or replace function public.registrar_protocolo(
   p_tipo text default 'correspondencia', p_urgente boolean default false, p_foto_caminho text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text;
   v_agora timestamptz := now(); v_ano int; v_n int; v_num text; v_id bigint;
   v_tipo text := coalesce(p_tipo, 'correspondencia'); v_urg boolean := coalesce(p_urgente, false);
   v_foto text := nullif(btrim(coalesce(p_foto_caminho, '')), ''); v_tam int;
@@ -380,7 +386,7 @@ create or replace function public.confirmar_etapa(
   p_setor_destino_id bigint default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
   v_png text; v_msg text; v_agora timestamptz := now(); v_setor_nome text; v_papel text;
   v_dest_nome text; v_sla timestamptz;
 begin
@@ -446,7 +452,7 @@ create or replace function public.ajustar_prazo(
   p_protocolo_id bigint, p_nova_data date, p_justificativa text, p_pin text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
   v_just text; v_msg text; v_agora timestamptz := now();
 begin
   select * into v_perfil from public.perfis where user_id = v_uid and ativo;
@@ -552,7 +558,8 @@ language sql stable security invoker set search_path = public as $$
     'abertos',        count(*) filter (where status <> 'concluido'),
     'vencidos',       count(*) filter (where semaforo = 'vencido'),
     'criticos',       count(*) filter (where semaforo = 'critico'),
-    'sla_estourado',  count(*) filter (where sla_estourado))
+    'sla_estourado',  count(*) filter (where sla_estourado),
+    'alerta_dias',    public._alerta_dias())
   from public.v_livro
 $$;
 
@@ -782,7 +789,7 @@ revoke all on public.parametros, public.feriados, public.integracao, public.fila
 revoke all on function
   public._param_text(text, text), public._param_int(text, int), public._eh_util(date), public._util_local(timestamp),
   public._somar_horas_uteis(timestamptz, numeric), public._somar_dias_uteis(date, int),
-  public._dias_restantes(date, text), public._semaforo(date, text), public._emails(text[], bigint),
+  public._dias_restantes(date, text), public._semaforo(date, text), public._alerta_dias(), public._emails(text[], bigint),
   public._enfileirar_email(text, text, bigint, text[], text, text),
   public._texto_email(text, text, boolean, date, timestamptz, text), public._verificar_sla(), public._segredo_ok(text),
   public.registrar_protocolo(text, text, text, text, boolean, text),
@@ -799,7 +806,7 @@ grant execute on function
   public.registrar_protocolo(text, text, text, text, boolean, text),
   public.confirmar_etapa(bigint, int, text, text, bigint), public.ajustar_prazo(bigint, date, text, text),
   public.listar_livro(text, text, date, date, int, int, text, text), public.minhas_pendencias(),
-  public._dias_restantes(date, text), public._semaforo(date, text)
+  public._dias_restantes(date, text), public._semaforo(date, text), public._alerta_dias()
   to authenticated;
 grant execute on function
   public.integracao_verificar(text), public.integracao_fila(text, int), public.integracao_marcar(text, bigint, boolean, text)

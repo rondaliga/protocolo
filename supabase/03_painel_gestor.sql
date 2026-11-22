@@ -90,7 +90,7 @@ create or replace function public._exigir_gestor() returns public.perfis
 language plpgsql security definer set search_path = public as $$
 declare v public.perfis%rowtype;
 begin
-  select * into v from public.perfis where user_id = auth.uid() and ativo and papel = 'gestor';
+  select * into v from public.perfis where user_id = public._uid() and ativo and papel = 'gestor';
   if not found then raise exception 'Apenas o gestor pode usar o painel de controle.' using errcode = '42501'; end if;
   return v;
 end $$;
@@ -174,7 +174,7 @@ create or replace function public.registrar_protocolo(
   p_assinatura_modo text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text; v_modo text;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text; v_modo text;
   v_agora timestamptz := now(); v_ano int; v_n int; v_num text; v_id bigint;
   v_tipo text := coalesce(p_tipo, 'correspondencia'); v_urg boolean := coalesce(p_urgente, false);
   v_foto text := nullif(btrim(coalesce(p_foto_caminho, '')), ''); v_tam int;
@@ -243,7 +243,7 @@ create or replace function public.confirmar_etapa(
   p_setor_destino_id bigint default null, p_assinatura_modo text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
   v_png text; v_msg text; v_agora timestamptz := now(); v_setor_nome text; v_setor_id bigint;
   v_dest_nome text; v_sla timestamptz; v_modo text; v_gestor boolean;
 begin
@@ -319,7 +319,7 @@ end $$;
 drop policy if exists fotos_insert on storage.objects;
 create policy fotos_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'protocolo-fotos' and public.meu_papel() in ('portaria', 'gestor')
-              and (storage.foldername(name))[1] = auth.uid()::text);
+              and (storage.foldername(name))[1] = public._uid()::text);
 
 -- Pendências: o gestor acompanha TODOS os protocolos em aberto
 create or replace function public.minhas_pendencias() returns jsonb
@@ -345,7 +345,7 @@ end $$;
 -- O próprio usuário troca o PIN; isso encerra a pendência de "primeiro acesso" do PIN
 create or replace function public.alterar_meu_pin(p_atual text, p_novo text) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
-declare v_uid uuid := auth.uid(); v_nome text; v_msg text;
+declare v_uid uuid := public._uid(); v_nome text; v_msg text;
 begin
   select nome into v_nome from public.perfis where user_id = v_uid and ativo;
   if v_nome is null then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
@@ -364,7 +364,7 @@ end $$;
 -- O usuário confirma que trocou a senha (o banco confere se a senha realmente mudou)
 create or replace function public.confirmar_troca_senha() returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v public.perfis%rowtype; v_hash text;
+declare v_uid uuid := public._uid(); v public.perfis%rowtype; v_hash text;
 begin
   select * into v from public.perfis where user_id = v_uid and ativo;
   if not found then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
@@ -381,7 +381,7 @@ end $$;
 create or replace function public.registrar_exportacao(
   p_tipo text, p_protocolo_id bigint default null, p_filtros text default null) returns void
 language plpgsql security definer set search_path = public, extensions as $$
-declare v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_num text; v_det jsonb := '{}'::jsonb;
+declare v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_num text; v_det jsonb := '{}'::jsonb;
 begin
   select * into v_perfil from public.perfis where user_id = v_uid and ativo;
   if not found then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;

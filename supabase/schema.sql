@@ -110,17 +110,41 @@ create table if not exists public.auditoria (
 create index if not exists ix_auditoria_protocolo on public.auditoria(protocolo_id);
 
 -- ---------------------------------------------------------------------
+-- 1b. IDENTIDADE EFETIVA (verificação em duas etapas)
+--     Todas as políticas e funções usam public._uid() no lugar de auth.uid().
+--     Ela devolve o usuário só quando o acesso está completo: se o usuário tem a verificação em duas etapas
+--     ativa (ou é gestor e o parâmetro "mfa_gestor_obrigatorio" está ligado) e a sessão ainda não passou
+--     pelo código (aal1), devolve NULL — o servidor trata a sessão como não autenticada, mesmo com a senha certa.
+-- ---------------------------------------------------------------------
+create or replace function public._uid() returns uuid
+language plpgsql stable security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_aal text; v_exige boolean := false;
+begin
+  if v_uid is null then return null; end if;
+  begin
+    v_aal := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'aal', 'aal1');
+  exception when others then v_aal := 'aal1'; end;
+  if v_aal = 'aal2' then return v_uid; end if;
+  if exists (select 1 from auth.mfa_factors where user_id = v_uid and status::text = 'verified') then return null; end if;
+  begin
+    select (valor = 'true') into v_exige from public.parametros where chave = 'mfa_gestor_obrigatorio';
+    if coalesce(v_exige, false) and exists (select 1 from public.perfis where user_id = v_uid and ativo and papel = 'gestor') then return null; end if;
+  exception when undefined_table then null; end;
+  return v_uid;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 2. FUNÇÕES AUXILIARES DE PERFIL (usadas pelas políticas RLS)
 --    SECURITY DEFINER evita recursão de RLS entre as tabelas.
 -- ---------------------------------------------------------------------
 create or replace function public.meu_papel() returns text
 language sql stable security definer set search_path = public as $$
-  select papel from public.perfis where user_id = auth.uid() and ativo
+  select papel from public.perfis where user_id = public._uid() and ativo
 $$;
 
 create or replace function public.meu_setor() returns bigint
 language sql stable security definer set search_path = public as $$
-  select setor_id from public.perfis where user_id = auth.uid() and ativo
+  select setor_id from public.perfis where user_id = public._uid() and ativo
 $$;
 
 create or replace function public.pode_ver_protocolo(p_id bigint) returns boolean
@@ -325,7 +349,7 @@ create or replace function public.registrar_protocolo(
   p_descricao text, p_pin text, p_assinatura text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_desc text; v_png text; v_msg text;
   v_agora timestamptz := now(); v_ano int; v_n int; v_num text; v_id bigint;
 begin
   select * into v_perfil from public.perfis where user_id = v_uid and ativo;
@@ -356,7 +380,7 @@ create or replace function public.confirmar_etapa(
   p_protocolo_id bigint, p_etapa int, p_pin text, p_assinatura text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
   v_png text; v_msg text; v_agora timestamptz := now(); v_setor_nome text; v_papel text;
 begin
   if p_etapa not in (2, 3) then raise exception 'Etapa inválida.'; end if;
@@ -400,7 +424,7 @@ create or replace function public.corrigir_descricao(
   p_protocolo_id bigint, p_nova text, p_justificativa text, p_pin text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare
-  v_uid uuid := auth.uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
+  v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_p public.protocolos%rowtype;
   v_nova text; v_just text; v_atual text; v_msg text; v_agora timestamptz := now();
 begin
   select * into v_perfil from public.perfis where user_id = v_uid and ativo;
@@ -432,7 +456,7 @@ end $$;
 -- O próprio usuário troca o seu PIN (exige o PIN atual)
 create or replace function public.alterar_meu_pin(p_atual text, p_novo text) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
-declare v_uid uuid := auth.uid(); v_nome text; v_msg text;
+declare v_uid uuid := public._uid(); v_nome text; v_msg text;
 begin
   select nome into v_nome from public.perfis where user_id = v_uid and ativo;
   if v_nome is null then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
@@ -448,7 +472,7 @@ end $$;
 create or replace function public.registrar_exportacao(
   p_tipo text, p_protocolo_id bigint default null, p_filtros text default null) returns void
 language plpgsql security definer set search_path = public, extensions as $$
-declare v_uid uuid := auth.uid(); v_nome text;
+declare v_uid uuid := public._uid(); v_nome text;
 begin
   select nome into v_nome from public.perfis where user_id = v_uid and ativo;
   if v_nome is null then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
@@ -461,7 +485,7 @@ end $$;
 -- (tentativas de login que falham ficam no log do próprio Supabase Auth).
 create or replace function public.registrar_acesso(p_evento text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
-declare v_uid uuid := auth.uid(); v_nome text;
+declare v_uid uuid := public._uid(); v_nome text;
 begin
   select nome into v_nome from public.perfis where user_id = v_uid and ativo;
   if v_nome is null then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
@@ -631,7 +655,7 @@ create policy p_setores_select on public.setores for select to authenticated
 
 drop policy if exists p_perfis_select on public.perfis;
 create policy p_perfis_select on public.perfis for select to authenticated
-  using (user_id = auth.uid() or public.meu_papel() = 'gestor');
+  using (user_id = public._uid() or public.meu_papel() = 'gestor');
 
 drop policy if exists p_protocolos_select on public.protocolos;
 create policy p_protocolos_select on public.protocolos for select to authenticated
@@ -663,6 +687,7 @@ alter default privileges in schema public revoke all on sequences from public, a
 alter default privileges in schema public revoke all on functions from public, anon, authenticated;
 
 grant usage on schema public to authenticated;
+grant execute on function public._uid() to anon, authenticated;     -- usada por todas as políticas RLS
 grant select on public.setores, public.protocolos, public.tramites,
                 public.correcoes_descricao, public.auditoria, public.v_livro to authenticated;
 -- perfis: o cliente NÃO pode ler pin_hash / contadores (privilégio por coluna)

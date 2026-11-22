@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- CSP: só scripts/estilos do próprio site e conexões ao Supabase do projeto.
        __SUPABASE_ORIGIN__ é substituído no build (scripts/build-site.sh). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src blob:; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src blob:; manifest-src 'self'; connect-src 'self' __SUPABASE_ORIGIN__; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex, nofollow">
   <title>Livro de Protocolo · CECAN – LNRCC</title>
+  <meta name="theme-color" content="#1f4e6e">
   <link rel="icon" href="data:,">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -44,6 +46,7 @@
 
 <!-- ============ APLICAÇÃO ============ -->
 <div id="view-app" hidden>
+  <a class="pular" href="#conteudo">Ir para o conteúdo</a>
   <header class="topo">
     <div class="marca">
       <img class="logo" alt="" hidden><span class="cruz" aria-hidden="true">+</span>
@@ -66,6 +69,7 @@
       </div>
       <button class="btn mini" id="btn-senha" type="button">Alterar senha</button>
       <button class="btn mini" id="btn-pin" type="button">Alterar PIN</button>
+      <button class="btn mini" id="btn-mfa" type="button" title="Verificação em duas etapas">2 etapas</button>
       <button class="btn mini" id="btn-sair" type="button">Sair</button>
     </div>
   </header>
@@ -76,7 +80,7 @@
     <button type="button" class="aba" data-aba="painel" id="btn-aba-painel" hidden>Painel de controle</button>
   </nav>
 
-  <main>
+  <main id="conteudo" tabindex="-1">
     <!-- ---------- Protocolos ---------- -->
     <section id="painel-protocolos">
       <div class="faixa-alerta" id="faixa-alertas" role="alert" hidden></div>
@@ -288,6 +292,20 @@
             </div>
           </div>
         </form>
+        <section class="cartao-cfg" id="cartao-dados" aria-labelledby="dados-tit">
+          <h3 id="dados-tit">Dados, backup e retenção</h3>
+          <p class="dica">O backup reúne protocolos, etapas e trilha em um arquivo JSON (sem as imagens das assinaturas). Faça-o antes de qualquer exclusão em massa.
+            A consulta de retenção apenas informa o que já passou do prazo de guarda; a exclusão continua sendo um ato do gestor, com justificativa e PIN.</p>
+          <div class="logo-linha">
+            <button type="button" class="btn primario" id="btn-backup">Baixar backup (JSON)</button>
+            <label class="logo-pin">Prazo de guarda
+              <span class="un-in"><input type="number" id="ret-meses" min="1" max="600" step="1" value="60"><i>meses</i></span>
+            </label>
+            <button type="button" class="btn sec" id="btn-retencao">Consultar retenção</button>
+          </div>
+          <p class="verificacao" id="ret-resultado" role="status"></p>
+          <p class="dica" id="versao-schema"></p>
+        </section>
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
       </div>
@@ -296,9 +314,23 @@
 </div>
 
 <!-- ============ MODAL: NOVO REGISTRO (1ª etapa) ============ -->
+<dialog id="dlg-inatividade" role="alertdialog" aria-labelledby="inat-tit" aria-describedby="inat-txt">
+  <div class="modal-corpo">
+    <h2 id="inat-tit">Você ainda está aí?</h2>
+    <p id="inat-txt">Por falta de uso, sua sessão será encerrada em <strong id="inat-seg">60</strong> s. O que não foi registrado será perdido
+      (o rascunho de um novo protocolo é guardado neste navegador).</p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="inat-sair">Sair agora</button>
+      <button type="button" class="btn primario" id="inat-continuar">Continuar conectado</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="dlg-novo">
   <form id="form-novo" class="modal-corpo" autocomplete="off">
     <h2>Novo registro — 1ª etapa (Portaria)</h2>
+    <p class="aviso-rascunho" id="rascunho-aviso" role="status" hidden>Rascunho recuperado (salvo em <span id="rascunho-quando"></span>). A assinatura e o PIN nunca são guardados.
+      <button type="button" class="btn sec mini" id="rascunho-descartar">Descartar rascunho</button></p>
     <div class="aviso" role="note">
       <strong>Orientação de preenchimento:</strong>
       Preencher um registro por documento. Informar data e hora em cada etapa e colher a assinatura de quem recebe.
@@ -608,6 +640,54 @@
 </dialog>
 
 <!-- ============ MODAL: MINHA CONTA (senha / primeiro acesso) ============ -->
+<dialog id="dlg-mfa" role="alertdialog" aria-labelledby="mfa-tit">
+  <form id="form-mfa" class="modal-corpo" autocomplete="off">
+    <h2 id="mfa-tit">Verificação em duas etapas</h2>
+    <p class="dica">Abra o aplicativo autenticador no celular e digite o código de 6 dígitos do <strong>Livro de Protocolo</strong>.</p>
+    <label>Código
+      <input class="codigo-mfa" name="codigo" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" autocomplete="one-time-code" required>
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="mfa-cancelar">Cancelar e sair</button>
+      <button type="submit" class="btn primario">Verificar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-mfa-cad">
+  <form id="form-mfa-cad" class="modal-corpo" autocomplete="off">
+    <h2 id="mfa-cad-tit">Verificação em duas etapas</h2>
+    <p class="dica" id="mfa-cad-info"></p>
+    <div id="mfa-cad-ativo" hidden>
+      <p class="aviso-rascunho">✔ Ativa nesta conta. Ao entrar, além da senha, será pedido o código do aplicativo autenticador.</p>
+      <button type="button" class="btn sec" id="mfa-desativar">Desativar verificação em duas etapas</button>
+    </div>
+    <div id="mfa-cad-novo" hidden>
+      <button type="button" class="btn primario" id="mfa-gerar">Gerar código QR</button>
+      <div id="mfa-cad-qr" hidden>
+        <ol class="mfa-passos">
+          <li>Instale um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, Authy, 2FAS…).</li>
+          <li>Escaneie o QR Code abaixo ou digite a chave manualmente.</li>
+          <li>Digite o código de 6 dígitos que o aplicativo mostrar.</li>
+        </ol>
+        <div class="mfa-qr-linha">
+          <img id="mfa-qr" alt="QR Code para cadastrar o aplicativo autenticador" width="176" height="176">
+          <p class="dica">Chave manual:<br><code id="mfa-chave"></code></p>
+        </div>
+        <label>Código de 6 dígitos
+          <input class="codigo-mfa" name="codigo" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" autocomplete="one-time-code">
+        </label>
+      </div>
+    </div>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="mfa-cad-fechar">Fechar</button>
+      <button type="submit" class="btn primario" id="mfa-ativar" hidden>Ativar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-conta">
   <form id="form-conta" class="modal-corpo" autocomplete="off">
     <h2 id="conta-titulo">Alterar senha</h2>

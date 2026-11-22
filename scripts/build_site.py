@@ -11,6 +11,7 @@ Variáveis: SUPABASE_URL, SUPABASE_ANON_KEY (obrigatórias); UNIDADE, TIMEZONE, 
 ASSINATURA_OBRIGATORIA (opcionais).
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -41,6 +42,14 @@ def chave_e_secreta(chave: str) -> bool:
     return False
 
 
+def minificar_css(css: str) -> str:
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    css = re.sub(r"\s+", " ", css)
+    css = re.sub(r"\s*([{};,>])\s*", r"\1", css)       # não mexe em ':' (seletores como "a :hover" e "a:hover" diferem)
+    css = re.sub(r"(?<=[{;]) *([a-zA-Z-]+) *: *", r"\1:", css)   # espaço só em volta dos dois-pontos de declarações
+    return css.replace(";}", "}").strip() + "\n"
+
+
 def main():
     url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
     chave = os.environ.get("SUPABASE_ANON_KEY", "").strip()
@@ -62,7 +71,7 @@ def main():
         "SUPABASE_ANON_KEY": chave,
         "UNIDADE": os.environ.get("UNIDADE", "CECAN – LNRCC"),
         "TIMEZONE": os.environ.get("TIMEZONE", "America/Fortaleza"),
-        "IDLE_MINUTES": int(os.environ.get("IDLE_MINUTES", "30")),
+        "IDLE_MINUTES": int(os.environ.get("IDLE_MINUTES", "360")),
         "ASSINATURA_OBRIGATORIA": os.environ.get("ASSINATURA_OBRIGATORIA", "false").lower() == "true",
     }
     (DESTINO / "config.js").write_text("window.APP_CONFIG = " + json.dumps(cfg, ensure_ascii=False, indent=2) + ";\n",
@@ -72,7 +81,22 @@ def main():
     html = indice.read_text(encoding="utf-8")
     if "__SUPABASE_ORIGIN__" not in html:
         falhar("placeholder __SUPABASE_ORIGIN__ não encontrado no index.html.")
-    indice.write_text(html.replace("__SUPABASE_ORIGIN__", f"{p.scheme}://{p.netloc}"), encoding="utf-8")
+    html = html.replace("__SUPABASE_ORIGIN__", f"{p.scheme}://{p.netloc}")
+
+    # CSS enxuto (sem comentários nem espaços sobrando) e versão por conteúdo nos arquivos: o navegador
+    # só rebaixa o que mudou e nunca usa um arquivo antigo depois de uma atualização.
+    css = DESTINO / "style.css"
+    css.write_text(minificar_css(css.read_text(encoding="utf-8")), encoding="utf-8")
+    for nome in ("style.css", "assinatura.js", "painel.js", "app.js", "config.js"):
+        arq = DESTINO / nome
+        if not arq.exists():
+            continue
+        h = hashlib.sha256(arq.read_bytes()).hexdigest()[:10]
+        alvo_ant = f'"{nome}"'
+        if alvo_ant not in html:
+            falhar(f"referência a {nome} não encontrada no index.html.")
+        html = html.replace(alvo_ant, f'"{nome}?v={h}"', 1)
+    indice.write_text(html, encoding="utf-8")
     (DESTINO / ".nojekyll").write_text("")
     print(f"Site gerado em {DESTINO} (Supabase: {p.scheme}://{p.netloc}).")
 

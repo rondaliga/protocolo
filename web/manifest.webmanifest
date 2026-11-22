@@ -1,0 +1,12 @@
+{
+  "name": "Livro de Protocolo Eletrônico",
+  "short_name": "Protocolo",
+  "description": "Recebimento e tramitação de demandas judiciais e correspondências, com trilha de auditoria.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f5f8",
+  "theme_color": "#1f4e6e",
+  "lang": "pt-BR",
+  "icons": [{ "src": "assets/icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -6,7 +6,7 @@
   'use strict';
 
   window.criarPainel = (LP) => {
-    const { $, $$, esc, data, hora, rpc, toast, erroForm, enviar } = LP;
+    const { $, $$, esc, data, hora, rpc, toast, erroForm, enviar, recarregarSessao } = LP;
 
     // ================================================================== TRILHA DE AUDITORIA
     const CATEGORIAS = {
@@ -26,7 +26,7 @@
       USUARIO_ATUALIZADO: 'Usuário atualizado', USUARIO_ATIVADO: 'Usuário reativado', USUARIO_DESATIVADO: 'Usuário desativado',
       SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra/parâmetro alterado', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
-      PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
+      BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
       PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido',
     };
 
@@ -37,8 +37,9 @@
       sla_setor_min: 'Tempo máximo do setor', sla_setor_urgente_min: 'Tempo máximo do setor (urgente)',
       expediente_inicio: 'Início do expediente', expediente_fim: 'Fim do expediente', alerta_prazo_dias: 'Avisar com antecedência (dias)',
       foto_obrigatoria_judicial: 'Foto obrigatória nas demandas judiciais', gestor_ignora_segregacao: 'Gestor assina mais de uma etapa',
-      url_sistema: 'Endereço do sistema',
+      url_sistema: 'Endereço do sistema', sessao_inatividade_min: 'Encerrar sessão por inatividade após', mfa_gestor_obrigatorio: 'Verificação em duas etapas obrigatória para o gestor',
     };
+    const ehDur = (k) => /^(sla_.*|sessao_inatividade)_min$/.test(k);
     // "H:MM" (como o banco guarda) → minutos
     const minDeHM = (v) => { const m = /^(\d{1,3}):(\d{2})$/.exec(String(v)); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
     // minutos → "4h30", "2h", "45min"
@@ -54,8 +55,8 @@
       return null;
     }
     const valorParam = (chave, v) => {
-      if (/^sla_.*_min$/.test(chave)) { const m = minDeHM(v); return m == null ? String(v) : fmtDur(m); }
-      if (chave === 'foto_obrigatoria_judicial' || chave === 'gestor_ignora_segregacao') return v === 'true' ? 'sim' : 'não';
+      if (ehDur(chave)) { const m = minDeHM(v); return m == null ? String(v) : fmtDur(m); }
+      if (['foto_obrigatoria_judicial', 'gestor_ignora_segregacao', 'mfa_gestor_obrigatorio'].includes(chave)) return v === 'true' ? 'sim' : 'não';
       return String(v);
     };
     const PAPEIS = { portaria: 'Portaria', adm: 'ADM', super_setor: 'Setor de destino', gestor: 'Gestor' };
@@ -94,6 +95,8 @@
         case 'PARAMETROS_ALTERADOS':
           Object.entries(d.alteracoes || {}).forEach(([k, v]) => add(`${(ROTULO_PARAM[k] || k)}: ${v.anterior != null ? `${valorParam(k, v.anterior)} → ` : ''}${valorParam(k, v.valor)}`)); break;
         case 'LOGO_ALTERADO': add(d.acao || ''); break;
+        case 'MFA_REDEFINIDO': add(`${d.nome || d.email || ''}${d.fatores != null ? ` (${d.fatores} cadastro${d.fatores === 1 ? '' : 's'} removido${d.fatores === 1 ? '' : 's'})` : ''}`); break;
+        case 'BACKUP_EXPORTADO': add(`${d.protocolos ?? 0} protocolos, ${d.eventos ?? 0} eventos`); break;
         case 'PROTOCOLO_EXCLUIDO':
           add(`protocolo ${d.numero || ''}`); add(`${d.tipo === 'judicial' ? 'demanda judicial' : 'correspondência'}, ${pl(d.etapas_registradas ?? 0, 'etapa', 'etapas')}${d.fotos ? ', com foto' : ''}`);
           if (d.trilha_removida) add(`${pl(d.trilha_removida, 'evento removido', 'eventos removidos')} da trilha`); add(`justificativa: ${d.justificativa}`); break;
@@ -145,7 +148,20 @@
         $('#aud-ant').disabled = aud.pagina <= 1; $('#aud-prox').disabled = aud.pagina >= paginas;
       } catch (e) { toast(e.message, true); }
     }
-    function abrirAuditoria() { $('#resultado-verificacao').textContent = ''; $('#resultado-verificacao').className = 'verificacao'; carregarAuditoria(); }
+    function abrirAuditoria() {
+      $('#resultado-verificacao').textContent = ''; $('#resultado-verificacao').className = 'verificacao'; carregarAuditoria();
+      verificarSelo();
+    }
+    // selo de integridade: confere a cadeia de hashes ao abrir a trilha (o botão continua disponível para refazer)
+    async function verificarSelo() {
+      const out = $('#resultado-verificacao');
+      try {
+        const r = await rpc('verificar_auditoria');
+        if (out.textContent && !out.dataset.selo) return;            // o gestor já pediu a verificação manual
+        out.dataset.selo = '1'; out.className = `verificacao ${r.ok ? 'ok' : 'falha'}`;
+        out.textContent = r.ok ? `✔ Trilha íntegra (${r.total} eventos verificados).` : `✖ ADULTERAÇÃO DETECTADA a partir do evento nº ${r.primeira_falha_id}.`;
+      } catch { /* a verificação manual mostra o erro */ }
+    }
 
     async function todosEventos(max) {
       const out = []; const f = filtrosAud();
@@ -226,7 +242,11 @@
     // ---------- usuários
     const usuarioPorId = (id) => painel.usuarios.find((u) => u.user_id === id);
     async function carregarUsuarios() {
-      try { painel.usuarios = await rpc('painel_listar_usuarios'); renderUsuarios(); } catch (e) { falha(e); }
+      try {
+        painel.usuarios = await rpc('painel_listar_usuarios');
+        try { painel.mfa = new Set(await rpc('painel_mfa_usuarios')); } catch { painel.mfa = new Set(); }     // 07 ainda não aplicado: sem selo
+        renderUsuarios();
+      } catch (e) { falha(e); }
     }
     function situacao(u) {
       const b = [u.ativo ? '<span class="sit ok">Ativo</span>' : '<span class="sit off">Inativo</span>'];
@@ -242,7 +262,7 @@
       const eu = LP.estado().sessao.uid;
       $('#usr-contagem').textContent = pl(l.length, 'usuário', 'usuários');
       $('#tbody-usr').innerHTML = l.map((u) => `<tr class="${u.ativo ? '' : 'inativo'}">
-        <td><strong>${esc(u.nome)}</strong>${u.user_id === eu ? ' <span class="tag">você</span>' : ''}<small class="et-sub">${esc(u.email || '')}</small></td>
+        <td><strong>${esc(u.nome)}</strong>${u.user_id === eu ? ' <span class="tag">você</span>' : ''}${painel.mfa && painel.mfa.has(u.user_id) ? ' <span class="tag" title="Verificação em duas etapas ativa">2 etapas</span>' : ''}<small class="et-sub">${esc(u.email || '')}</small></td>
         <td>${esc(PAPEIS[u.papel] || u.papel)}${u.setor_nome ? `<small class="et-sub">${esc(u.setor_nome)}</small>` : ''}</td>
         <td>${situacao(u)}</td>
         <td class="nw">${u.ultimo_acesso ? `${data(u.ultimo_acesso)} ${hora(u.ultimo_acesso)}` : 'nunca entrou'}</td>
@@ -251,6 +271,7 @@
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini sec" data-uacao="senha">Nova senha</button>
           <button type="button" class="btn mini sec" data-uacao="pin">Novo PIN</button>`}
           ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear">Desbloquear PIN</button>' : ''}
+          ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa">Redefinir 2 etapas</button>' : ''}
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini ${u.ativo ? 'perigo' : 'sec'}" data-uacao="ativo">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}
         </td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
     }
@@ -291,8 +312,14 @@
       f.valor.value = tipo === 'senha' ? gerarSenha() : gerarPin(); f.valor.maxLength = tipo === 'senha' ? 72 : 6;
       $('#dlg-reset').showModal(); f.pin.focus();
     }
+    function abrirResetMfa(u) {
+      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.modo = 'mfa';
+      $('#ativo-titulo').textContent = `Redefinir a verificação em duas etapas de ${u.nome}?`;
+      $('#ativo-info').textContent = 'Use quando a pessoa perdeu ou trocou o celular. O cadastro atual é apagado, as sessões abertas são encerradas e ela entra só com a senha para cadastrar de novo (obrigatório se a exigência estiver ligada).';
+      $('#dlg-ativo').showModal(); f.pin.focus();
+    }
     function abrirAtivo(u) {
-      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.ativar = u.ativo ? '0' : '1';
+      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.modo = ''; f.dataset.ativar = u.ativo ? '0' : '1';
       $('#ativo-titulo').textContent = u.ativo ? `Desativar ${u.nome}?` : `Reativar ${u.nome}?`;
       $('#ativo-info').textContent = u.ativo
         ? 'O usuário perde o acesso imediatamente (sessões encerradas). Todo o histórico é mantido; nada é apagado.'
@@ -318,7 +345,7 @@
 
     // ---------- parâmetros (um único formulário, um único botão Salvar)
     const prm = { valores: {}, jornada: 540 };
-    const campoDur = (chave) => `<div class="dur"><input type="text" name="${chave}" data-dur maxlength="14" inputmode="text" autocomplete="off" aria-describedby="p-${chave}">
+    const campoDur = (chave, max = 14400) => `<div class="dur"><input type="text" name="${chave}" data-dur data-max="${max}" maxlength="14" inputmode="text" autocomplete="off" aria-describedby="p-${chave}">
       <small id="p-${chave}" class="dur-previa"></small></div>`;
     function montarParametros() {
       $('#param-corpo').innerHTML = `
@@ -342,10 +369,15 @@
               <tr><th scope="row">ADM recebe o documento</th><td>${campoDur('sla_adm_min')}</td><td>${campoDur('sla_adm_urgente_min')}</td></tr>
               <tr><th scope="row">Setor de destino recebe</th><td>${campoDur('sla_setor_min')}</td><td>${campoDur('sla_setor_urgente_min')}</td></tr>
             </tbody></table></section>
+          <section class="cartao-cfg"><h3>Segurança da sessão</h3>
+            <p class="dica">Sem usar o sistema por este tempo, o usuário é desconectado. Aceita 6h, 6:00, 90min ou 1,5 (horas); de 5 min a 24 h.</p>
+            <div class="param-linhas"><label>Encerrar após ${campoDur('sessao_inatividade_min', 1440)}</label></div></section>
           <section class="cartao-cfg larga"><h3>Regras gerais</h3>
             <div class="param-linhas">
               <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> Exigir foto do envelope nas demandas judiciais</label>
               <label class="chk neutro"><input type="checkbox" name="gestor_ignora_segregacao"> Permitir que o gestor assine mais de uma etapa do mesmo protocolo</label>
+              <label class="chk neutro"><input type="checkbox" name="mfa_gestor_obrigatorio"> Exigir verificação em duas etapas (aplicativo autenticador) de todo gestor
+                <small class="dica">Ao ligar, cada gestor será obrigado a cadastrar o aplicativo no próximo acesso. Sem o código, o servidor recusa o acesso.</small></label>
               <label>Endereço do sistema (usado nos e-mails) <input type="url" name="url_sistema" maxlength="200" placeholder="https://…"></label>
             </div></section>
         </div>`;
@@ -365,7 +397,7 @@
       lista.forEach((p) => {
         const el = f.elements[p.chave]; if (!el) return;
         if (el.type === 'checkbox') el.checked = p.valor === 'true';
-        else if (/^sla_.*_min$/.test(p.chave)) { const m = minDeHM(p.valor); el.value = m == null ? p.valor : fmtDur(m); }
+        else if (ehDur(p.chave)) { const m = minDeHM(p.valor); el.value = m == null ? p.valor : fmtDur(m); }
         else el.value = p.valor;
       });
       atualizarParametros();
@@ -376,9 +408,9 @@
       const jornada = Math.max(1, (hmEmMin(f.elements.expediente_fim.value) - hmEmMin(f.elements.expediente_inicio.value)) || prm.jornada);
       $$('[data-dur]', f).forEach((el) => {
         const m = lerDuracao(el.value, jornada), prev = $(`#p-${el.name}`);
-        const ok = m != null && m >= 5 && m <= 14400; el.classList.toggle('invalido', !ok);
-        if (!ok) { invalido = true; prev.textContent = el.value.trim() ? 'Formato inválido (mín. 5 min)' : 'Informe o tempo'; prev.className = 'dur-previa ruim'; }
-        else { prev.textContent = `= ${fmtDur(m)} · ${m} min${m >= jornada ? ` · ${(m / jornada).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${m / jornada === 1 ? 'dia útil' : 'dias úteis'}` : ''}`; prev.className = 'dur-previa'; }
+        const max = Number(el.dataset.max || 14400), ok = m != null && m >= 5 && m <= max && !(el.name === 'sessao_inatividade_min' && /d/.test(el.value.toLowerCase())); el.classList.toggle('invalido', !ok);
+        if (!ok) { invalido = true; prev.textContent = el.value.trim() ? `Formato inválido (de 5 min a ${max >= 1440 ? '24 h' : '240 h'})` : 'Informe o tempo'; prev.className = 'dur-previa ruim'; }
+        else { prev.textContent = `= ${fmtDur(m)} · ${m} min${m >= jornada && el.name !== 'sessao_inatividade_min' ? ` · ${(m / jornada).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${m / jornada === 1 ? 'dia útil' : 'dias úteis'}` : ''}`; prev.className = 'dur-previa'; }
       });
       const i = hmEmMin(f.elements.expediente_inicio.value), fim = hmEmMin(f.elements.expediente_fim.value), av = $('#p-exped');
       const exped = !(i < fim); av.hidden = !exped; av.textContent = exped ? 'O fim do expediente deve ser depois do início.' : ''; if (exped) invalido = true;
@@ -389,7 +421,7 @@
     }
     const paramMudou = (k, atual) => {
       const orig = prm.valores[k]; if (orig === undefined) return false;
-      if (/^sla_.*_min$/.test(k)) { const j = lerDuracao(atual, prm.jornada); return j !== minDeHM(orig); }
+      if (ehDur(k)) { const j = lerDuracao(atual, prm.jornada); return j !== minDeHM(orig); }
       return atual !== String(orig);
     };
     async function carregarParametros() {
@@ -439,6 +471,7 @@
       try {
         logoEst.novo = null; $('#logo-salvar').disabled = true; $('#logo-pin').value = ''; mostrarLogoPrevia(LP.estado().logoSrc);
         const r = await rpc('painel_resumo');
+        rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 7${v < 7 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
         const k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
         $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
           + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')
@@ -465,6 +498,29 @@
       $('#aud-imprimir').addEventListener('click', imprimirTrilha);
       $('#tbody-audit').addEventListener('click', (ev) => { const b = ev.target.closest('[data-prot]'); if (b) LP.abrirDetalhe(b.dataset.prot); });
 
+      // dados, backup e retenção
+      $('#btn-backup').addEventListener('click', async () => {
+        const btn = $('#btn-backup'); btn.disabled = true;
+        try {
+          const b = await rpc('exportar_backup');
+          const blob = new Blob([JSON.stringify(b, null, 1)], { type: 'application/json' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+          a.download = `backup-protocolo-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+          toast(`Backup gerado: ${pl(b.protocolos.length, 'protocolo', 'protocolos')} e ${pl(b.auditoria.length, 'evento', 'eventos')} da trilha.`);
+        } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
+      });
+      $('#btn-retencao').addEventListener('click', async () => {
+        const out = $('#ret-resultado');
+        try {
+          const r = await rpc('retencao_resumo', { p_meses: Number($('#ret-meses').value) });
+          out.className = `verificacao ${r.protocolos ? 'falha' : 'ok'}`;
+          out.textContent = r.protocolos
+            ? `${pl(r.protocolos, 'protocolo concluído passou', 'protocolos concluídos passaram')} de ${pl(r.meses, 'mês', 'meses')} de guarda (mais antigo: ${data(r.mais_antigo)}), com ${pl(r.fotos, 'foto', 'fotos')}.`
+            : `Nenhum protocolo concluído com mais de ${pl(r.meses, 'mês', 'meses')}.`;
+        } catch (e) { out.className = 'verificacao falha'; out.textContent = e.message; }
+      });
+
       // painel
       $('#subabas').addEventListener('click', (ev) => { const b = ev.target.closest('.subaba'); if (b) trocarSub(b.dataset.sub); });
       ['#usr-busca', '#usr-filtro-papel', '#usr-filtro-ativo'].forEach((s) => $(s).addEventListener('input', renderUsuarios));
@@ -476,6 +532,7 @@
         else if (b.dataset.uacao === 'senha') abrirReset(u, 'senha');
         else if (b.dataset.uacao === 'pin') abrirReset(u, 'pin');
         else if (b.dataset.uacao === 'ativo') abrirAtivo(u);
+        else if (b.dataset.uacao === 'mfa') abrirResetMfa(u);
         else if (b.dataset.uacao === 'desbloquear') {
           try { await rpc('painel_desbloquear_pin', { p_user_id: u.user_id }); toast(`PIN de ${u.nome} desbloqueado.`); carregarUsuarios(); } catch (e) { falha(e); }
         }
@@ -519,6 +576,11 @@
       });
       $('#form-ativo').addEventListener('submit', (ev) => {
         ev.preventDefault(); const form = ev.target, ativar = form.dataset.ativar === '1';
+        if (form.dataset.modo === 'mfa') {
+          enviar(form, () => rpc('painel_resetar_mfa', { p_user_id: form.dataset.uid, p_pin_gestor: form.pin.value }),
+            async () => { $('#dlg-ativo').close(); toast('Verificação em duas etapas redefinida.'); await carregarUsuarios(); });
+          return;
+        }
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),
           async () => { $('#dlg-ativo').close(); toast(ativar ? 'Usuário reativado.' : 'Usuário desativado.'); await carregarUsuarios(); });
       });
@@ -545,10 +607,11 @@
         try {
           const env = {}; Object.entries(valoresForm()).forEach(([k, v]) => {
             if (!paramMudou(k, v)) return;
-            env[k] = /^sla_.*_min$/.test(k) ? `${lerDuracao(v, prm.jornada)}min` : v;
+            env[k] = ehDur(k) ? `${lerDuracao(v, prm.jornada)}min` : v;
           });
           const r = await rpc('painel_salvar_parametros', { p_valores: env });
           toast(r.alterados ? 'Alterações salvas. Valem para os próximos protocolos.' : 'Nada mudou.');
+          if (r.alterados) recarregarSessao();
           await carregarParametros();
         } catch (e) { er.textContent = e.message; er.hidden = false; atualizarParametros(); }
       });

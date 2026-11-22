@@ -15,6 +15,8 @@ create table if not exists auth.identities (
   id uuid primary key, user_id uuid references auth.users(id) on delete cascade, provider_id text, identity_data jsonb,
   provider text, last_sign_in_at timestamptz, created_at timestamptz, updated_at timestamptz);
 create table if not exists auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade);
+create table if not exists auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade,
+  friendly_name text, factor_type text default 'totp', status text default 'unverified', created_at timestamptz default now());
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create schema if not exists extensions;

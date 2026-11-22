@@ -6,7 +6,7 @@ RLS, triggers e RPCs são os de verdade; só o transporte HTTP é simulado.
 
   python3 mock_supabase.py PORTA BANCO     (o psql precisa conseguir conectar; ver PSQL abaixo)
 """
-import json, os, re, shlex, subprocess, sys
+import base64, hashlib, hmac, json, os, re, secrets, shlex, struct, subprocess, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -17,6 +17,17 @@ SENHA_TESTE = "Trocar@123"
 PSQL = shlex.split(os.environ.get("PSQL", f"psql -d {BANCO} -tA -v ON_ERROR_STOP=1 -q"))
 UUID = re.compile(r"^[0-9a-f-]{36}$")
 ARQUIVOS = {}
+SEGREDOS = {}                    # id do fator -> segredo TOTP (base32)
+SESSAO = threading.local()       # nível da sessão da requisição atual (aal1 | aal2)
+
+
+def totp(segredo, t=None, passo=30):
+    """TOTP (RFC 6238, SHA-1, 6 dígitos) — o mesmo cálculo dos aplicativos autenticadores."""
+    chave = base64.b32decode(segredo + "=" * (-len(segredo) % 8))
+    n = int((time.time() if t is None else t) // passo)
+    h = hmac.new(chave, struct.pack(">Q", n), hashlib.sha1).digest()
+    o = h[-1] & 15
+    return f"{(struct.unpack('>I', h[o:o + 4])[0] & 0x7fffffff) % 1000000:06d}"
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
 
 
@@ -38,7 +49,9 @@ def lit(v):
 
 
 def como(uid, consulta):
-    return sql(f"begin;\nset local role authenticated;\nselect set_config('request.jwt.claim.sub','{uid}',true) \\g /dev/null\n{consulta};\ncommit;\n")
+    aal = getattr(SESSAO, "aal", "aal1")
+    return sql(f"begin;\nset local role authenticated;\nselect set_config('request.jwt.claim.sub','{uid}',true) \\g /dev/null\n"
+               f"select set_config('request.jwt.claims','{json.dumps({'sub': uid, 'aal': aal})}',true) \\g /dev/null\n{consulta};\ncommit;\n")
 
 
 class H(BaseHTTPRequestHandler):
@@ -50,7 +63,8 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(dados))); self.end_headers(); self.wfile.write(dados)
 
     def uid(self):
-        m = re.match(r"Bearer mock\.([0-9a-f-]{36})$", self.headers.get("Authorization", ""))
+        m = re.match(r"Bearer mock\.([0-9a-f-]{36})(\.2)?$", self.headers.get("Authorization", ""))
+        SESSAO.aal = "aal2" if (m and m.group(2)) else "aal1"
         return m.group(1) if m else None
 
     def corpo(self):
@@ -59,6 +73,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/auth/v1/user": return self.auth_user()
         if u.path.startswith("/storage/v1/object/authenticated/protocolo-fotos/"):
             uid = self.uid()
             if not uid: return self.responder(401, {"message": "JWT inválido"})
@@ -75,6 +90,12 @@ class H(BaseHTTPRequestHandler):
         if arq.is_file() and DIST in arq.resolve().parents:
             return self.responder(200, arq.read_bytes(), TIPOS.get(arq.suffix, "application/octet-stream"))
         self.responder(404, b"nao encontrado", "text/plain")
+
+    def auth_user(self):
+        uid = self.uid()
+        if not uid: return self.responder(401, {"message": "JWT inválido"})
+        linhas = [l for l in sql(f"select id || '|' || status from auth.mfa_factors where user_id='{uid}'").splitlines() if "|" in l]
+        self.responder(200, {"id": uid, "factors": [{"id": l.split("|")[0], "factor_type": "totp", "status": l.split("|")[1]} for l in linhas]})
 
     def rest_get(self, u):
         uid = self.uid()
@@ -103,8 +124,16 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.responder(400, {"message": str(e)})
 
-    def do_DELETE(self):                    # Storage: apagar foto (a política fotos_delete decide)
+    def do_DELETE(self):                    # Storage: apagar foto (a política fotos_delete decide) · Auth: remover fator MFA
         u = urlparse(self.path); uid = self.uid(); pre = "/storage/v1/object/protocolo-fotos/"
+        m = re.match(r"^/auth/v1/factors/([0-9a-f-]{36})$", u.path)
+        if m:
+            if not uid: return self.responder(401, {"message": "JWT inválido"})
+            st = sql(f"select status from auth.mfa_factors where id='{m.group(1)}' and user_id='{uid}'")
+            if st == "null" or not st: return self.responder(404, {"message": "factor not found"})
+            if st == "verified" and SESSAO.aal != "aal2": return self.responder(422, {"error_code": "insufficient_aal", "msg": "AAL2 required"})
+            sql(f"delete from auth.mfa_factors where id='{m.group(1)}'"); SEGREDOS.pop(m.group(1), None)
+            return self.responder(200, {"id": m.group(1)})
         if not u.path.startswith(pre): return self.responder(404, {"message": "rota fora do mock"})
         if not uid: return self.responder(401, {"message": "JWT inválido"})
         nome = unquote(u.path[len(pre):])
@@ -138,10 +167,32 @@ class H(BaseHTTPRequestHandler):
                     return self.responder(400, {"error_code": "invalid_credentials", "msg": "Invalid login credentials"})
                 uid = r
             else:
-                uid = str(c.get("refresh_token", "")).removeprefix("r.")
+                rt = str(c.get("refresh_token", "")).removeprefix("r."); aal2 = rt.endswith(".2"); uid = rt[:-2] if aal2 else rt
                 if not UUID.match(uid): return self.responder(400, {"error_code": "invalid_grant"})
             if gr == "password": sql(f"update auth.users set last_sign_in_at = now() where id = '{uid}'")
-            return self.responder(200, {"access_token": f"mock.{uid}", "refresh_token": f"r.{uid}", "expires_in": 3600, "user": {"id": uid}})
+            suf = ".2" if (gr != "password" and aal2) else ""
+            return self.responder(200, {"access_token": f"mock.{uid}{suf}", "refresh_token": f"r.{uid}{suf}", "expires_in": 3600, "user": {"id": uid}})
+        if u.path == "/auth/v1/factors":                                  # MFA: cadastrar fator TOTP
+            uid = self.uid()
+            if not uid: return self.responder(401, {"message": "JWT inválido"})
+            seg = base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+            fid = sql(f"insert into auth.mfa_factors (user_id, friendly_name, status) values ('{uid}', {lit(str(self.corpo().get('friendly_name', '')))}, 'unverified') returning id")
+            fid = fid.splitlines()[0] if fid else fid
+            SEGREDOS[fid] = seg
+            qr = "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='black'/></svg>"
+            return self.responder(200, {"id": fid, "type": "totp", "totp": {"qr_code": qr, "secret": seg, "uri": f"otpauth://totp/Teste?secret={seg}"}})
+        m = re.match(r"^/auth/v1/factors/([0-9a-f-]{36})/(challenge|verify)$", u.path)
+        if m:
+            uid = self.uid()
+            if not uid: return self.responder(401, {"message": "JWT inválido"})
+            fid, acao = m.groups()
+            if sql(f"select count(*) from auth.mfa_factors where id='{fid}' and user_id='{uid}'") != "1": return self.responder(404, {"message": "factor not found"})
+            if acao == "challenge": return self.responder(200, {"id": f"ch-{fid}", "expires_at": int(time.time()) + 300})
+            codigo = str(self.corpo().get("code", ""))
+            if not any(codigo == totp(SEGREDOS[fid], time.time() + d * 30) for d in (-1, 0, 1)):
+                return self.responder(400, {"error_code": "mfa_verification_failed", "msg": "Invalid TOTP code entered"})
+            sql(f"update auth.mfa_factors set status='verified' where id='{fid}'")
+            return self.responder(200, {"access_token": f"mock.{uid}.2", "refresh_token": f"r.{uid}.2", "expires_in": 3600, "user": {"id": uid}})
         if u.path == "/auth/v1/logout": return self.responder(204, b"")
         if u.path.startswith("/storage/v1/object/protocolo-fotos/"):
             uid = self.uid()

@@ -345,7 +345,7 @@ end $$;
 drop policy if exists fotos_select on storage.objects;
 create policy fotos_select on storage.objects for select to authenticated
   using (bucket_id = 'protocolo-fotos'
-         and ((storage.foldername(name))[1] = auth.uid()::text
+         and ((storage.foldername(name))[1] = public._uid()::text
               or public.meu_papel() = 'gestor'
               or exists (select 1 from public.protocolo_fotos f
                           where f.caminho = name and public.pode_ver_protocolo(f.protocolo_id))));

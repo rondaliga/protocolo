@@ -11,5 +11,11 @@ psql -v ON_ERROR_STOP=1 -q -d $DB -f ../schema.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../02_prazos_alertas.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../03_painel_gestor.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../04_logo_horas_exclusoes.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../05_melhorias.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../05_melhorias.sql >/dev/null   # idempotente: segunda execução também deve passar
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../06_inatividade.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../06_inatividade.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../07_mfa.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../07_mfa.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 02_testes.sql 2>&1 | sed -E 's/^psql:[^ ]+ [0-9]+: //'
 psql -qc "drop database $DB" postgres

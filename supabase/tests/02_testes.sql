@@ -4,11 +4,12 @@
 create schema if not exists t;
 
 -- Executa SQL "como" um usuário (role authenticated + auth.uid()), devolvendo resultado ou 'ERRO: ...'
-create or replace function t.como(p_email text, p_sql text) returns text language plpgsql as $$
+create or replace function t.como(p_email text, p_sql text, p_aal text default 'aal1') returns text language plpgsql as $$
 declare v_res text; v_uid uuid;
 begin
   select id into v_uid from auth.users where email = p_email;
   perform set_config('request.jwt.claim.sub', coalesce(v_uid::text, ''), true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_uid, 'aal', p_aal)::text, true);
   execute 'set local role ' || case when p_email = 'anon' then 'anon' else 'authenticated' end;
   begin
     execute p_sql into v_res;
@@ -672,6 +673,115 @@ begin
   r := t.como('gestor@x', $q$select public.registrar_exportacao('TRILHA')::text$q$);
   perform t.afirma('trilha segue gravando depois da limpeza', (select count(*) from public.auditoria) = 2
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true', r);
+end $$;
+
+-- 7b. melhorias (05): versão do schema, backup, retenção
+do $$
+declare r text;
+begin
+  perform t.afirma('schema_versao registra os 7 arquivos', (select count(*) from public.schema_versao) = 7 and public.versao_schema() = 7);
+  perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
+  update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
+  perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
+     public._semaforo(current_date + 4, 'pendente_adm') = 'critico' and public._semaforo(current_date + 5, 'pendente_adm') = 'atencao'
+     and (public.resumo_livro()->>'alerta_dias') = '4');
+  perform t.afirma('usuário comum lê o resumo e o semáforo (sem permissão direta ao parâmetro)',
+     t.como('far@x', 'select (public.resumo_livro()->>''alerta_dias'')') = '4' and t.como('far@x', 'select count(*) >= 0 from public.v_livro') = 'true');
+  update public.parametros set valor = '2' where chave = 'alerta_prazo_dias';
+  perform t.afirma('semáforo volta ao padrão de 2 dias', public._semaforo(current_date + 3, 'pendente_adm') = 'atencao');
+  r := t.como('far@x', $q$select public.exportar_backup()::text$q$);
+  perform t.afirma('backup é negado a quem não é gestor', r like 'ERRO:%', r);
+  r := t.como('far@x', $q$select public.retencao_resumo(60)::text$q$);
+  perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
+  perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
+     and (r::jsonb->>'versao_schema') = '7', left(r, 120));
+  perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
+  perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
+     and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+  r := t.como('gestor@x', $q$select public.retencao_resumo(0)::text$q$);
+  perform t.afirma('prazo de guarda inválido é recusado', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.retencao_resumo(1)::text$q$);
+  perform t.afirma('resumo de retenção devolve contagens', (r::jsonb ? 'protocolos') and (r::jsonb ? 'fotos'), r);
+end $$;
+
+-- 7c. tempo de inatividade ajustável (06)
+do $$
+declare r text;
+begin
+  perform t.afirma('padrão de inatividade é de 6 horas (usuário comum lê)', t.como('far@x', 'select (public.sessao_config()->>''inatividade_min'')') = '360');
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sessao_inatividade_min":"8h30"}'::jsonb)::text$q$);
+  perform t.afirma('gestor ajusta a inatividade (8h30)', r like '%"ok": true%', r);
+  perform t.afirma('valor é guardado em H:MM e aplicado', (select valor from public.parametros where chave = 'sessao_inatividade_min') = '8:30'
+     and t.como('far@x', 'select (public.sessao_config()->>''inatividade_min'')') = '510');
+  perform t.afirma('alteração da inatividade fica na trilha', exists (select 1 from public.auditoria where acao = 'PARAMETROS_ALTERADOS' and detalhes::text like '%sessao_inatividade_min%'));
+  perform t.afirma('formatos aceitos: 90min, 1,5 e 6:00', public._validar_parametro('sessao_inatividade_min', '90min') = '1:30'
+     and public._validar_parametro('sessao_inatividade_min', '1,5') = '1:30' and public._validar_parametro('sessao_inatividade_min', '6:00') = '6:00');
+  perform t.afirma('tipo do parâmetro é duração', public._tipo_parametro('sessao_inatividade_min') = 'duracao');
+  foreach r in array array['0', '4min', '25h', '2d', '1 dia', 'abc', ''] loop
+    begin
+      perform public._validar_parametro('sessao_inatividade_min', r);
+      perform t.afirma('inatividade "' || r || '" deveria ser recusada', false);
+    exception when others then
+      perform t.afirma('inatividade "' || r || '" é recusada', true);
+    end;
+  end loop;
+  r := t.como('far@x', $q$select public.painel_salvar_parametros('{"sessao_inatividade_min":"1h"}'::jsonb)::text$q$);
+  perform t.afirma('quem não é gestor não altera a inatividade', r like 'ERRO:%', r);
+  perform public.admin_definir_parametro('sessao_inatividade_min', '6:00');
+end $$;
+
+-- 7d. verificação em duas etapas (07)
+do $$
+declare r text; v_g uuid := (select id from auth.users where email = 'gestor@x'); v_far uuid := (select id from auth.users where email = 'far@x');
+        v_n_prot int;
+begin
+  select count(*) into v_n_prot from public.protocolos;
+  perform t.afirma('sem verificação ativa, a sessão aal1 funciona normalmente', t.como('gestor@x', 'select public.meu_papel()') = 'gestor');
+  insert into auth.mfa_factors (user_id, status) values (v_g, 'verified');
+  perform t.afirma('com fator ativo e sessão aal1 (só a senha) o servidor não reconhece o usuário', t.como('gestor@x', 'select coalesce(public.meu_papel(), ''nenhum'')') = 'nenhum');
+  perform t.afirma('com o código (aal2) o acesso volta', t.como('gestor@x', 'select public.meu_papel()', 'aal2') = 'gestor');
+  r := t.como('gestor@x', 'select public.exportar_backup()::text');
+  perform t.afirma('funções do gestor recusam sessão aal1 com fator ativo', r like 'ERRO:%', r);
+  perform t.afirma('funções do gestor funcionam em aal2', t.como('gestor@x', 'select (public.exportar_backup() ? ''protocolos'')::text', 'aal2') = 'true');
+  perform t.afirma('as tabelas (RLS) ficam vazias para sessão aal1', t.como('gestor@x', 'select count(*) from public.protocolos') = '0'
+     and t.como('gestor@x', 'select count(*) from public.protocolos', 'aal2') = v_n_prot::text, v_n_prot::text);
+  r := t.como('gestor@x', 'select public.mfa_estado()::text');
+  perform t.afirma('mfa_estado responde mesmo antes do código', (r::jsonb->>'tem_fator') = 'true' and (r::jsonb->>'aal') = 'aal1', r);
+  perform t.afirma('outro usuário sem fator não é afetado', t.como('far@x', 'select public.meu_papel()') is not null);
+  perform t.afirma('quem não é gestor não lista nem redefine verificação', t.como('far@x', 'select public.painel_mfa_usuarios()::text') like 'ERRO:%');
+  perform t.afirma('lista de usuários com verificação (gestor, aal2)', t.como('gestor@x', 'select public.painel_mfa_usuarios()::text', 'aal2') like '%' || v_g::text || '%');
+  -- exigência por parâmetro
+  delete from auth.mfa_factors where user_id = v_g;
+  update public.parametros set valor = 'true' where chave = 'mfa_gestor_obrigatorio';
+  r := t.como('gestor@x', 'select public.mfa_estado()::text');
+  perform t.afirma('com a exigência ligada, gestor sem fator em aal1 fica barrado e é avisado', t.como('gestor@x', 'select coalesce(public.meu_papel(), ''nenhum'')') = 'nenhum'
+     and (r::jsonb->>'exigido') = 'true' and (r::jsonb->>'tem_fator') = 'false', r);
+  perform t.afirma('com a exigência ligada, quem não é gestor segue normal', t.como('far@x', 'select public.meu_papel()') is not null);
+  update public.parametros set valor = 'false' where chave = 'mfa_gestor_obrigatorio';
+  perform t.afirma('exigência desligada libera de novo', t.como('gestor@x', 'select public.meu_papel()') = 'gestor');
+  -- eventos na trilha
+  r := t.como('far@x', 'select public.mfa_registrar_evento(''MFA_ATIVADO'')::text');
+  perform t.afirma('evento de ativação sem fator real é recusado', r like 'ERRO:%', r);
+  insert into auth.mfa_factors (user_id, status) values (v_far, 'verified');
+  r := t.como('far@x', 'select ''ok'' from (select public.mfa_registrar_evento(''MFA_ATIVADO'')) x', 'aal2');
+  perform t.afirma('com fator ativo, a ativação é registrada (em aal2)', r = 'ok' and exists (select 1 from public.auditoria where acao = 'MFA_ATIVADO'), r);
+  -- redefinição pelo gestor
+  r := t.como('gestor@x', format('select public.painel_resetar_mfa(%L, ''0000'')::text', v_far), 'aal2');
+  perform t.afirma('PIN errado do gestor impede a redefinição', r like '%"ok": false%' and exists (select 1 from auth.mfa_factors where user_id = v_far), r);
+  r := t.como('gestor@x', format('select public.painel_resetar_mfa(%L, ''5555'')::text', v_far), 'aal2');
+  perform t.afirma('gestor redefine a verificação de outro usuário', r like '%"ok": true%' and not exists (select 1 from auth.mfa_factors where user_id = v_far), r);
+  perform t.afirma('redefinição fica na trilha', exists (select 1 from public.auditoria where acao = 'MFA_REDEFINIDO' and usuario_nome = 'Paula Gestora'));
+  r := t.como('gestor@x', format('select public.painel_resetar_mfa(%L, ''5555'')::text', v_g), 'aal2');
+  perform t.afirma('ninguém redefine a própria verificação', r like 'ERRO:%', r);
+  -- recuperação pelo SQL Editor
+  insert into auth.mfa_factors (user_id, status) values (v_far, 'verified');
+  r := t.como('gestor@x', 'select public.admin_resetar_mfa(''far@x'')::text', 'aal2');
+  perform t.afirma('admin_resetar_mfa não é chamável pelo cliente', r like 'ERRO:%', r);
+  v_n_prot := public.admin_resetar_mfa('far@x');
+  perform t.afirma('admin_resetar_mfa (SQL Editor) remove os fatores e registra', v_n_prot = 1 and not exists (select 1 from auth.mfa_factors where user_id = v_far)
+     and exists (select 1 from public.auditoria where acao = 'MFA_REDEFINIDO' and usuario_nome = 'SQL Editor'));
+  perform t.afirma('cadeia da trilha segue íntegra', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
 end $$;
 
 -- 8. bloqueio de PIN (transações separadas: as falhas precisam ser gravadas)

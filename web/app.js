@@ -19,7 +19,7 @@
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ------------------------------------------------------------------ configuração
-  const CFG = Object.assign({ UNIDADE: 'CECAN – LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 30,
+  const CFG = Object.assign({ UNIDADE: 'CECAN – LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 360,
                               ASSINATURA_OBRIGATORIA: false }, window.APP_CONFIG || {});
   const BASE = String(CFG.SUPABASE_URL || '').replace(/\/+$/, '');
   const KEY = String(CFG.SUPABASE_ANON_KEY || '');
@@ -150,6 +150,7 @@
   }
 
   async function sair(evento = 'LOGOUT') {
+    if (evento === 'LOGOUT') { clearTimeout(rascunhoTimer); limparRascunho(); }      // saída voluntária: nada fica; por inatividade o rascunho é mantido
     try { await rpc('registrar_acesso', { p_evento: evento }); } catch { /* segue */ }
     try { await fetch(`${BASE}/auth/v1/logout`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${estado.sessao.access_token}` } }); } catch { /* segue */ }
     encerrarSessao(evento === 'LOGOUT_INATIVIDADE' ? 'Sessão encerrada por inatividade.' : '');
@@ -163,8 +164,156 @@
                       deveTrocarSenha: !!p.deve_trocar_senha, deveTrocarPin: !!p.deve_trocar_pin };
   }
 
+  // tempo de inatividade vem do banco (ajustável em "Prazos e regras"); IDLE_MINUTES do config.js só vale se o banco não responder
+  async function carregarSessaoConfig() {
+    try { const c = await rpc('sessao_config'); const m = Number(c && c.inatividade_min); if (m >= 5 && m <= 1440) { estado.idleMin = m; return; } } catch { /* usa o padrão do config.js */ }
+    estado.idleMin = CFG.IDLE_MINUTES;
+  }
+  const idleMs = () => (estado.idleMin || CFG.IDLE_MINUTES) * 60000;
+  const AVISO_MS = 60000;                       // o aviso aparece no último minuto
+  // chamada a cada segundo (e ao voltar de suspensão): avisa no último minuto e encerra ao estourar o tempo
+  function checarInatividade() {
+    const dlg = $('#dlg-inatividade');
+    if (!estado.perfil || estado.saindo) return false;
+    const restante = idleMs() - (Date.now() - estado.ultimaAtividade);
+    if (restante <= 0) {
+      estado.saindo = true; if (dlg.open) dlg.close();
+      sair('LOGOUT_INATIVIDADE').finally(() => { estado.saindo = false; });
+      return true;
+    }
+    if (restante <= AVISO_MS && idleMs() > 2 * AVISO_MS) {
+      $('#inat-seg').textContent = String(Math.ceil(restante / 1000));
+      if (!dlg.open) { dlg.showModal(); $('#inat-continuar').focus(); }
+    } else if (dlg.open) dlg.close();
+    return false;
+  }
+
+  // ------------------------------------------------------------------ verificação em duas etapas (TOTP do Supabase Auth)
+  // O servidor recusa qualquer dado de quem tem o fator ativo e ainda não digitou o código (public._uid()); aqui só conduzimos a tela.
+  class ErroApiMfa extends ErroApi {}
+  async function gotrue(metodo, caminho, corpo) {
+    const token = await garantirToken();
+    const resp = await fetch(`${BASE}/auth/v1${caminho}`, { method: metodo, headers: { apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo) });
+    const j = await lerResposta(resp);
+    if (!resp.ok) {
+      const cod = (j && (j.error_code || j.code)) || '';
+      const msg = /mfa_verification_failed|invalid.*(totp|code)/i.test(cod + ((j && (j.msg || j.message)) || '')) ? 'Código inválido ou vencido. Confira o relógio do celular e tente o código seguinte.'
+        : resp.status === 429 ? 'Muitas tentativas. Aguarde alguns minutos.' : (j && (j.msg || j.message)) || `Falha na verificação (${resp.status}).`;
+      throw new ErroApiMfa(msg, resp.status);
+    }
+    return j;
+  }
+  const fatoresTotp = async () => ((await gotrue('GET', '/user')).factors || []).filter((f) => f.factor_type === 'totp');
+  async function verificarFator(fatorId, codigo) {      // desafio + código → sessão nova já no nível aal2
+    const ch = await gotrue('POST', `/factors/${fatorId}/challenge`, {});
+    const j = await gotrue('POST', `/factors/${fatorId}/verify`, { challenge_id: ch.id, code: codigo });
+    salvarSessao({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (j.expires_in || 3600), uid: estado.sessao.uid });
+  }
+  const sairDoGoTrue = () => { try { fetch(`${BASE}/auth/v1/logout`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${estado.sessao.access_token}` } }).catch(() => {}); } catch { /* ok */ } };
+
+  // pede o código no login (ou ao recarregar a página numa sessão ainda sem o código)
+  function pedirCodigo() {
+    return new Promise((ok, falha) => {
+      const dlg = $('#dlg-mfa'), f = $('#form-mfa'); f.reset(); erroForm(f, '');
+      estado.mfaEspera = { ok, falha }; dlg.showModal(); f.codigo.focus();
+    });
+  }
+  function ligarMfaLogin() {
+    const dlg = $('#dlg-mfa'), f = $('#form-mfa');
+    const encerrar = (erro) => { const w = estado.mfaEspera; estado.mfaEspera = null; if (dlg.open) dlg.close(); if (w) { if (erro) { sairDoGoTrue(); w.falha(erro); } else w.ok(); } };
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault(); const btn = $('button[type=submit]', f); btn.disabled = true; erroForm(f, '');
+      try {
+        const fatores = (await fatoresTotp()).filter((x) => x.status === 'verified'); if (!fatores.length) throw new ErroApi('Nenhum aplicativo autenticador cadastrado.', 400);
+        await verificarFator(fatores[0].id, f.codigo.value.trim()); encerrar(null);
+      } catch (e) { erroForm(f, e.message); f.codigo.value = ''; f.codigo.focus(); } finally { btn.disabled = false; }
+    });
+    $('#mfa-cancelar').addEventListener('click', () => encerrar(new ErroApi('Verificação em duas etapas cancelada.', 401)));
+    dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); encerrar(new ErroApi('Verificação em duas etapas cancelada.', 401)); });
+  }
+
+  // cadastro / gerenciamento (obrigatorio = gestor sob exigência, sem poder fechar)
+  function abrirCadastroMfa(obrigatorio) {
+    return new Promise((ok, falha) => {
+      const dlg = $('#dlg-mfa-cad'), f = $('#form-mfa-cad'); f.reset(); erroForm(f, '');
+      estado.mfaCad = { ok, falha, obrigatorio, fatorNovo: null };
+      $('#mfa-cad-qr').hidden = true; $('#mfa-ativar').hidden = true; $('#mfa-cad-ativo').hidden = true; $('#mfa-cad-novo').hidden = true;
+      $('#mfa-cad-fechar').textContent = obrigatorio ? 'Sair' : 'Fechar';
+      $('#mfa-cad-info').textContent = obrigatorio
+        ? 'O gestor precisa usar a verificação em duas etapas. Cadastre o aplicativo autenticador para continuar.'
+        : 'Além da senha, será pedido um código do celular a cada entrada. Protege a conta mesmo que a senha vaze.';
+      fatoresTotp().then((l) => {
+        const ativo = l.some((x) => x.status === 'verified');
+        $('#mfa-cad-ativo').hidden = !ativo; $('#mfa-cad-novo').hidden = ativo;
+        $('#mfa-desativar').hidden = !!estado.mfa.exigido;                     // exigida pelo gestor: não pode desativar
+        if (ativo && estado.mfa.exigido) $('#mfa-cad-info').textContent = 'Exigida para o gestor nesta unidade; não pode ser desativada.';
+        estado.mfaCad.fatores = l;
+      }).catch((e) => erroForm(f, e.message));
+      dlg.showModal();
+    });
+  }
+  async function fecharCadastroMfa(resultado) {
+    const c = estado.mfaCad; estado.mfaCad = null; if (!c) return;
+    if (c.fatorNovo) { try { await gotrue('DELETE', `/factors/${c.fatorNovo}`); } catch { /* sobra de cadastro não concluído */ } }
+    const dlg = $('#dlg-mfa-cad'); if (dlg.open) dlg.close();
+    if (resultado === 'ok') c.ok(); else c.falha(new ErroApi('Cadastro da verificação em duas etapas não concluído.', 401));
+  }
+  function ligarMfaCadastro() {
+    const f = $('#form-mfa-cad');
+    $('#mfa-gerar').addEventListener('click', async () => {
+      const btn = $('#mfa-gerar'); btn.disabled = true; erroForm(f, '');
+      try {
+        // fatores não concluídos de tentativas antigas são removidos antes de gerar um novo
+        for (const x of (estado.mfaCad.fatores || []).filter((y) => y.status !== 'verified')) { try { await gotrue('DELETE', `/factors/${x.id}`); } catch { /* ok */ } }
+        const j = await gotrue('POST', '/factors', { factor_type: 'totp', friendly_name: `Livro de Protocolo ${new Date().toISOString().slice(0, 16)}`, issuer: 'Livro de Protocolo' });
+        estado.mfaCad.fatorNovo = j.id;
+        const qr = j.totp && j.totp.qr_code; $('#mfa-qr').src = /^data:image\/svg\+xml/.test(qr || '') ? qr : '';
+        $('#mfa-chave').textContent = (j.totp && j.totp.secret || '').replace(/(.{4})/g, '$1 ').trim();
+        btn.hidden = true; $('#mfa-cad-qr').hidden = false; $('#mfa-ativar').hidden = false; f.codigo.focus();
+      } catch (e) { erroForm(f, e.message); } finally { btn.disabled = false; }
+    });
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault(); const c = estado.mfaCad; if (!c || !c.fatorNovo) return;
+      const btn = $('#mfa-ativar'); btn.disabled = true; erroForm(f, '');
+      try {
+        await verificarFator(c.fatorNovo, f.codigo.value.trim()); c.fatorNovo = null;
+        try { await rpc('mfa_registrar_evento', { p_evento: 'MFA_ATIVADO' }); } catch { /* a trilha é registrada na próxima ação */ }
+        estado.mfa.tem_fator = true; toast('Verificação em duas etapas ativada.'); await fecharCadastroMfa('ok');
+      } catch (e) { erroForm(f, e.message); f.codigo.value = ''; } finally { btn.disabled = false; }
+    });
+    $('#mfa-desativar').addEventListener('click', async () => {
+      if (!window.confirm('Desativar a verificação em duas etapas desta conta?')) return;
+      erroForm(f, '');
+      try {
+        for (const x of (estado.mfaCad.fatores || []).filter((y) => y.status === 'verified')) await gotrue('DELETE', `/factors/${x.id}`);
+        try { await rpc('mfa_registrar_evento', { p_evento: 'MFA_DESATIVADO' }); } catch { /* ok */ }
+        estado.mfa.tem_fator = false; toast('Verificação em duas etapas desativada.'); await fecharCadastroMfa('ok');
+      } catch (e) { erroForm(f, e.message); }
+    });
+    $('#mfa-cad-fechar').addEventListener('click', () => {
+      if (estado.mfaCad && estado.mfaCad.obrigatorio) { fecharCadastroMfa('cancelado').catch(() => {}); return; }
+      fecharCadastroMfa('ok');
+    });
+    $('#dlg-mfa-cad').addEventListener('cancel', (ev) => { ev.preventDefault(); $('#mfa-cad-fechar').click(); });
+  }
+
+  // chamada no começo de iniciarApp: decide se pede o código, exige o cadastro ou segue direto
+  async function garantirMfa() {
+    const e = await rpc('mfa_estado');
+    estado.mfa = e;
+    if (e.tem_fator && e.aal !== 'aal2') { await pedirCodigo(); estado.mfa = await rpc('mfa_estado'); }
+    else if (e.exigido && !e.tem_fator) {
+      try { await abrirCadastroMfa(true); } catch (err) { sairDoGoTrue(); throw err; }
+      estado.mfa = await rpc('mfa_estado');
+    }
+  }
+
   async function iniciarApp(registrarLogin) {
+    await garantirMfa();
     await carregarPerfil();
+    await carregarSessaoConfig();
+    purgarRascunhosAlheios();
     if (registrarLogin) { try { await rpc('registrar_acesso', { p_evento: 'LOGIN' }); } catch { /* não bloqueia */ } }
     const { perfil } = estado;
     $('#usr-nome').textContent = perfil.nome;
@@ -176,6 +325,7 @@
     $('.sino-wrap').hidden = perfil.papel === 'portaria'; estado.alertasVistos = null; estado.setores = null;
     estado.ultimaAtividade = Date.now();
     mostrar('app');
+    restaurarFiltros();
     trocarAba('protocolos');
     await recarregar();
     await verificarAlertas(false);
@@ -193,6 +343,20 @@
   }
 
   // ------------------------------------------------------------------ dashboard e tabela
+  // filtros de conveniência lembrados por usuário neste navegador (só status, alerta e ordem; nunca busca livre nem datas)
+  const chaveFiltros = () => `protocolo.filtros.${estado.sessao ? estado.sessao.uid : ''}`;
+  const FILTROS_SALVOS = ['status', 'alerta', 'ordem'];
+  function salvarFiltros() {
+    const f = $('#form-filtros'); const o = {}; FILTROS_SALVOS.forEach((n) => { o[n] = f[n].value; });
+    try { localStorage.setItem(chaveFiltros(), JSON.stringify(o)); } catch { /* sem armazenamento */ }
+  }
+  function restaurarFiltros() {
+    const f = $('#form-filtros');
+    try {
+      const o = JSON.parse(localStorage.getItem(chaveFiltros()) || 'null'); if (!o) return;
+      FILTROS_SALVOS.forEach((n) => { const op = [...f[n].options].find((x) => x.value === o[n]); if (op) f[n].value = op.value; });
+    } catch { /* ignora */ }
+  }
   function filtros() {
     const f = $('#form-filtros');
     const v = (n) => (f[n].value || '').trim() || null;
@@ -205,7 +369,9 @@
     $('#k-total').textContent = r.total; $('#k-adm').textContent = r.pendente_adm;
     $('#k-setor').textContent = r.pendente_setor; $('#k-ok').textContent = r.concluido;
     $('#k-hoje').textContent = `${r.hoje} ${r.hoje === 1 ? 'registrado' : 'registrados'} hoje`;
-    $('#k-venc').textContent = r.vencidos; $('#k-crit').textContent = `${r.criticos} vencem em até 2 dias`;
+    $('#k-venc').textContent = r.vencidos; const dias = Number(r.alerta_dias ?? 2);
+    $('#k-crit').textContent = `${r.criticos} vencem em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+    const opc = $('select[name="alerta"] option[value="criticos"]'); if (opc) opc.textContent = `Vence em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
     $('#k-sla').textContent = r.sla_estourado;
     const fx = $('#faixa-alertas');
     fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
@@ -372,9 +538,50 @@
     finally { btn.disabled = false; $$('input.pin', form).forEach((i) => { i.value = ''; }); }
   }
 
+  // ---- rascunho do novo protocolo: sessionStorage (some ao fechar a aba), por usuário, validade de 24 h.
+  // Guarda tipo, urgência, descrição e foto. NUNCA guarda assinatura nem PIN.
+  const RASCUNHO = 'protocolo.rascunho.';
+  const chaveRascunho = () => `${RASCUNHO}${estado.sessao ? estado.sessao.uid : ''}`;
+  function limparRascunho() { try { sessionStorage.removeItem(chaveRascunho()); } catch { /* ok */ } }
+  function purgarRascunhosAlheios() {   // outro usuário entrou neste navegador: o rascunho do anterior é apagado
+    try { Object.keys(sessionStorage).filter((k) => k.startsWith(RASCUNHO) && k !== chaveRascunho()).forEach((k) => sessionStorage.removeItem(k)); } catch { /* ok */ }
+  }
+  const blobParaDataUrl = (blob) => new Promise((ok, falha) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = falha; r.readAsDataURL(blob); });
+  function dataUrlParaBlob(url) {
+    const m = /^data:(image\/jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(url || ''); if (!m) return null;
+    const bin = atob(m[2]), b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i += 1) b[i] = bin.charCodeAt(i);
+    return new Blob([b], { type: m[1] });
+  }
+  let rascunhoTimer = null;
+  function agendarRascunho() { clearTimeout(rascunhoTimer); rascunhoTimer = setTimeout(salvarRascunho, 500); }
+  async function salvarRascunho() {
+    const f = $('#form-novo'); if (!estado.sessao || !$('#dlg-novo').open) return;
+    if (!f.descricao.value.trim() && !estado.fotoBlob) { limparRascunho(); return; }
+    const r = { tipo: f.tipo.value, urgente: f.urgente.checked, descricao: f.descricao.value, salvoEm: Date.now(), foto: null };
+    try { if (estado.fotoBlob) r.foto = await blobParaDataUrl(estado.fotoBlob); } catch { /* sem foto no rascunho */ }
+    try { sessionStorage.setItem(chaveRascunho(), JSON.stringify(r)); }
+    catch { try { r.foto = null; sessionStorage.setItem(chaveRascunho(), JSON.stringify(r)); } catch { /* armazenamento cheio ou bloqueado */ } }
+  }
+  function restaurarRascunho() {
+    const f = $('#form-novo'), aviso = $('#rascunho-aviso'); aviso.hidden = true;
+    let r = null; try { r = JSON.parse(sessionStorage.getItem(chaveRascunho()) || 'null'); } catch { /* ok */ }
+    if (!r || Date.now() - Number(r.salvoEm) > 24 * 3600 * 1000) { if (r) limparRascunho(); return; }
+    if (['correspondencia', 'judicial'].includes(r.tipo)) f.tipo.value = r.tipo;
+    ajustarTipo(); if (!f.tipo.value) return;
+    f.urgente.checked = !!r.urgente && f.tipo.value === 'judicial';
+    f.descricao.value = String(r.descricao || '').slice(0, 300); $('#cont-desc').textContent = String(f.descricao.value.length);
+    const blob = dataUrlParaBlob(r.foto);
+    if (blob) {
+      estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
+      const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false; $('#btn-foto-remover').hidden = false;
+    }
+    $('#rascunho-quando').textContent = `${data(new Date(r.salvoEm).toISOString())} ${hora(new Date(r.salvoEm).toISOString())}`;
+    aviso.hidden = false;
+  }
+
   function abrirNovo() {
     const f = $('#form-novo'); f.reset(); $('#cont-desc').textContent = '0'; erroForm(f, '');
-    limparFoto(); ajustarTipo();
+    limparFoto(); ajustarTipo(); restaurarRascunho();
     prepararAssinatura('novo'); $('#dlg-novo').showModal(); f.descricao.focus();
   }
   const fotoObrigatoria = () => $('#form-novo').tipo.value === 'judicial';
@@ -483,11 +690,14 @@
     $$('img.logo').forEach((i) => { if (ok) { i.src = src; i.hidden = false; } else { i.hidden = true; i.removeAttribute('src'); } });
     const fav = $('link[rel=icon]'); if (fav) fav.href = ok ? src : 'data:,';
   }
+  const LOGO_CACHE = 'protocolo.logo';
   async function carregarIdentidade() {
+    try { const c = sessionStorage.getItem(LOGO_CACHE); if (c && LOGO_OK.test(c)) aplicarLogo(c); } catch { /* sem cache */ }
     try {
       const resp = await fetch(`${BASE}/rest/v1/rpc/identidade_publica`, { method: 'POST',
         headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' }, body: '{}' });
-      if (resp.ok) { const j = await resp.json(); if (j && j.logo) { aplicarLogo(j.logo); return; } }
+      if (resp.ok) { const j = await resp.json(); if (j && j.logo) { aplicarLogo(j.logo); try { sessionStorage.setItem(LOGO_CACHE, j.logo); } catch { /* cheio */ } return; }
+        try { sessionStorage.removeItem(LOGO_CACHE); } catch { /* ok */ } }
     } catch { /* segue para o arquivo opcional */ }
     const img = new Image();                              // alternativa: web/assets/logo.png (se existir)
     img.onload = () => aplicarLogo('assets/logo.png');
@@ -676,16 +886,22 @@
   // ------------------------------------------------------------------ eventos
   function ligarEventos() {
     // login
+    // freio de tentativas no próprio navegador (o Supabase também limita no servidor): 5 erros → espera de 60 s
+    const freio = { erros: 0, ate: 0 };
     $('#form-login').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const f = ev.target, btn = $('button[type=submit]', f), erro = $('#login-erro');
+      const espera = Math.ceil((freio.ate - Date.now()) / 1000);
+      if (espera > 0) { erro.textContent = `Muitas tentativas. Aguarde ${espera} s e tente novamente.`; erro.hidden = false; return; }
       btn.disabled = true; erro.hidden = true;
       try {
         await tokenGrant('password', { email: f.email.value.trim(), password: f.senha.value });
+        freio.erros = 0;
         f.reset();
         await iniciarApp(true);
       } catch (e) {
         if (estado.sessao) salvarSessao(null);
+        freio.erros += 1; if (freio.erros >= 5) { freio.erros = 0; freio.ate = Date.now() + 60000; }
         erro.textContent = e.message; erro.hidden = false; f.senha.value = '';
       } finally { btn.disabled = false; }
     });
@@ -696,7 +912,7 @@
     // busca instantânea + filtros
     const f = $('#form-filtros');
     let t;
-    const aplicar = () => { estado.pagina = 1; recarregar(); };
+    const aplicar = () => { estado.pagina = 1; salvarFiltros(); recarregar(); };
     f.addEventListener('submit', (ev) => ev.preventDefault());
     f.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(aplicar, 300); });
     ['status', 'alerta', 'ordem', 'data_ini', 'data_fim'].forEach((n) => f[n].addEventListener('change', aplicar));
@@ -722,6 +938,11 @@
     $('#btn-imprimir-livro').addEventListener('click', imprimirLivro);
     $('#btn-novo').addEventListener('click', abrirNovo);
     $('#form-novo').tipo.addEventListener('change', ajustarTipo);
+    ['input', 'change'].forEach((ev) => $('#form-novo').addEventListener(ev, agendarRascunho));
+    $('#rascunho-descartar').addEventListener('click', () => {
+      limparRascunho(); limparFoto(); const f = $('#form-novo'); f.descricao.value = ''; f.urgente.checked = false; $('#cont-desc').textContent = '0';
+      $('#rascunho-aviso').hidden = true; toast('Rascunho descartado.'); f.descricao.focus();
+    });
     const usarFoto = async (arq, entrada) => {
       const form = $('#form-novo');
       estado.fotoBlob = null; $('#foto-previa').hidden = true; $('#btn-foto-remover').hidden = true; if (!arq) return;
@@ -730,13 +951,14 @@
         if (estado.fotoUrl) URL.revokeObjectURL(estado.fotoUrl);
         estado.fotoBlob = blob; estado.fotoUrl = URL.createObjectURL(blob);
         const im = $('#foto-previa'); im.src = estado.fotoUrl; im.hidden = false; $('#btn-foto-remover').hidden = false;
+        agendarRascunho();
       } catch (e) { erroForm(form, e.message); }
       if (entrada) entrada.value = '';
     };
     $('#inp-foto').addEventListener('change', (ev) => usarFoto(ev.target.files[0], ev.target));
     $('#inp-foto-camera').addEventListener('change', (ev) => usarFoto(ev.target.files[0], ev.target));
     $('#btn-foto-arquivo').addEventListener('click', () => $('#inp-foto').click());
-    $('#btn-foto-remover').addEventListener('click', limparFoto);
+    $('#btn-foto-remover').addEventListener('click', () => { limparFoto(); agendarRascunho(); });
     // "Tirar foto": no celular abre a câmera do aparelho; no computador abre a webcam numa janela
     let fluxo = null;
     const pararCamera = () => { if (fluxo) fluxo.getTracks().forEach((t) => t.stop()); fluxo = null; $('#cam-video').srcObject = null; };
@@ -773,7 +995,7 @@
         return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: ass.png, p_assinatura_modo: ass.modo,
           p_tipo: form.tipo.value, p_urgente: form.urgente.checked, p_foto_caminho: caminho });
       }, async (r) => {
-        $('#dlg-novo').close(); limparFoto();
+        clearTimeout(rascunhoTimer); limparRascunho(); $('#dlg-novo').close(); limparFoto();
         toast(`Protocolo ${r.numero} registrado — o ADM foi avisado.`); estado.pagina = 1; await recarregar();
       });
     });
@@ -837,6 +1059,8 @@
     document.addEventListener('pointerdown', iniciarAudio, { once: true });
 
     $('#btn-senha').addEventListener('click', () => abrirConta(false));
+    ligarMfaLogin(); ligarMfaCadastro();
+    $('#btn-mfa').addEventListener('click', () => { abrirCadastroMfa(false).catch(() => {}); });
     $('#dlg-conta').addEventListener('cancel', (ev) => { if (estado.contaObrigatoria) ev.preventDefault(); });   // Esc não pula o primeiro acesso
     $('#form-conta').addEventListener('submit', enviarConta);
     $('#btn-pin').addEventListener('click', () => { const form = $('#form-pin'); form.reset(); erroForm(form, ''); $('#dlg-pin').showModal(); form.atual.focus(); });
@@ -858,9 +1082,12 @@
 
     // inatividade + atualização automática
     ['pointerdown', 'keydown', 'scroll'].forEach((n) => document.addEventListener(n, () => { estado.ultimaAtividade = Date.now(); }, { passive: true }));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checarInatividade(); });   // ao voltar de suspensão/aba parada
+    setInterval(checarInatividade, 1000);
+    $('#inat-continuar').addEventListener('click', () => { estado.ultimaAtividade = Date.now(); $('#dlg-inatividade').close(); });
+    $('#inat-sair').addEventListener('click', () => { $('#dlg-inatividade').close(); sair(); });
     setInterval(() => {
       if (!estado.perfil) return;
-      if (Date.now() - estado.ultimaAtividade > CFG.IDLE_MINUTES * 60000) { sair('LOGOUT_INATIVIDADE'); return; }
       verificarAlertas(true);
       if (estado.aba === 'protocolos' && !$('dialog[open]') && !document.hidden) recarregar();
     }, 30000);
@@ -872,6 +1099,7 @@
     if (!CONFIG_OK) { mostrar('config'); return; }
     montarAssinaturas();
     painelMod = window.criarPainel(Object.freeze({
+      recarregarSessao: carregarSessaoConfig,
       $, $$, esc, data, hora, rpc, toast, erroForm, enviar, abrirDetalhe, imprimir, cabecalhoImpressao, rodapeImpressao,
       estado: () => estado, aplicarLogo, limparSetores: () => { estado.setores = null; },
       enderecoSistema: () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`),

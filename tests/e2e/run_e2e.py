@@ -56,7 +56,11 @@ def pdf_da_impressao(page, nome, paisagem):
 
 
 def esperar_toast(page, trecho):
-    page.locator("#toast:not([hidden])", has_text=trecho).wait_for(timeout=8000)
+    try:
+        page.locator("#toast:not([hidden])", has_text=trecho).wait_for(timeout=8000)
+    except Exception:
+        print(f"FALHA: esperava toast com «{trecho}»; toast atual: {page.inner_text('#toast')!r}; hidden={page.get_attribute('#toast', 'hidden')!r}")
+        raise
     print("toast:", page.inner_text("#toast"))
 
 
@@ -356,6 +360,20 @@ try:
         page.click("#param-descartar"); page.wait_for_timeout(500); assert page.input_value("#form-param input[name=expediente_fim]") == "17:00"
         page.fill("#form-param input[name=sla_adm_min]", "4h"); page.fill("#form-param input[name=sla_setor_min]", "9h"); page.fill("#form-param input[name=expediente_inicio]", "08:00")
         page.fill("#form-param input[name=prazo_judicial_dias]", "5"); page.click("#param-salvar"); esperar_toast(page, "Alterações salvas")
+        page.wait_for_timeout(800)          # o formulário é recarregado após salvar
+        # tempo de inatividade ajustável (padrão 6 h)
+        assert page.input_value("#form-param input[name=sessao_inatividade_min]") == "6h", page.input_value("#form-param input[name=sessao_inatividade_min]")
+        for ruim in ("2d", "25h", "1min", "abc", ""):
+            page.fill("#form-param input[name=sessao_inatividade_min]", ruim)
+            assert page.locator("#param-salvar").is_disabled(), f"'{ruim}' deveria impedir o salvamento"
+        page.fill("#form-param input[name=sessao_inatividade_min]", "8h30")
+        page.wait_for_timeout(300)
+        assert "510 min" in page.inner_text("#p-sessao_inatividade_min") and page.locator("#param-salvar").is_enabled(), (page.inner_text("#p-sessao_inatividade_min"), page.input_value("#form-param input[name=sessao_inatividade_min]"), page.locator("#form-param .invalido").evaluate_all("e=>e.map(x=>x.name+\"=\"+x.value)"))
+        page.click("#param-salvar"); esperar_toast(page, "Alterações salvas"); page.wait_for_timeout(500)
+        assert psql("select valor from public.parametros where chave='sessao_inatividade_min'") == "8:30"
+        assert page.input_value("#form-param input[name=sessao_inatividade_min]") == "8h30"
+        page.fill("#form-param input[name=sessao_inatividade_min]", "6h"); page.click("#param-salvar"); esperar_toast(page, "Alterações salvas"); page.wait_for_timeout(400)
+        assert psql("select valor from public.parametros where chave='sessao_inatividade_min'") == "6:00"
 
         # Logo em todo o sistema
         page.click("[data-sub=sistema]"); page.locator("#form-logo").wait_for()
@@ -403,6 +421,158 @@ try:
         fc.value.set_files(str(FOTO)); pc.locator("#foto-previa").wait_for(state="visible", timeout=8000)
         assert pc.get_attribute("#inp-foto-camera", "capture") == "environment"
         pc.screenshot(path=str(OUT / "15_celular_foto.png")); cel.close()
+        login(page, "gestor")
+
+        # ---- rascunho automático do novo protocolo
+        import json as _json
+        page.click("[data-aba=protocolos]"); page.click("#btn-novo")
+        page.select_option("#form-novo select[name=tipo]", "judicial"); page.check("#form-novo input[name=urgente]")
+        page.fill("#form-novo textarea[name=descricao]", "Ofício de teste do rascunho 77/2026")
+        page.set_input_files("#inp-foto", str(FOTO)); page.locator("#foto-previa").wait_for(state="visible"); page.wait_for_timeout(1200)
+        bruto = page.evaluate("Object.entries(sessionStorage).filter(([k]) => k.startsWith('protocolo.rascunho.')).map(([k, v]) => v)")
+        assert len(bruto) == 1, bruto
+        rasc = _json.loads(bruto[0]); assert rasc["descricao"].startswith("Ofício de teste") and rasc["tipo"] == "judicial" and rasc["urgente"] is True
+        assert rasc["foto"].startswith("data:image/jpeg;base64,"), "foto deveria ir no rascunho"
+        assert set(rasc) == {"tipo", "urgente", "descricao", "salvoEm", "foto"}, "o rascunho não pode guardar assinatura nem PIN"
+        page.click("#dlg-novo [data-fechar]"); page.reload(); page.locator("#view-app").wait_for(state="visible"); page.wait_for_timeout(800)
+        page.click("#btn-novo")
+        assert page.input_value("#form-novo textarea[name=descricao]") == "Ofício de teste do rascunho 77/2026"
+        assert page.input_value("#form-novo select[name=tipo]") == "judicial" and page.is_checked("#form-novo input[name=urgente]")
+        assert page.locator("#rascunho-aviso").is_visible() and page.locator("#foto-previa").is_visible(), "rascunho e foto devem voltar"
+        page.click("#rascunho-descartar"); page.wait_for_timeout(300)
+        assert page.input_value("#form-novo textarea[name=descricao]") == "" and page.locator("#foto-previa").is_hidden() and page.locator("#rascunho-aviso").is_hidden()
+        assert page.evaluate("Object.keys(sessionStorage).filter(k => k.startsWith('protocolo.rascunho.')).length") == 0
+        page.fill("#form-novo textarea[name=descricao]", "Outro rascunho 88"); page.wait_for_timeout(900)
+        assert page.evaluate("Object.keys(sessionStorage).filter(k => k.startsWith('protocolo.rascunho.')).length") == 1
+        page.click("#dlg-novo [data-fechar]"); sair(page)
+        assert page.evaluate("Object.keys(sessionStorage).filter(k => k.startsWith('protocolo.rascunho.')).length") == 0, "sair apaga o rascunho"
+        login(page, "gestor")
+        # ---- v5: selo de integridade automático, backup, retenção, versão, manifesto, filtros salvos, freio de login
+        page.click("#btn-aba-auditoria"); page.locator("#resultado-verificacao:not(:empty)").wait_for(timeout=8000)
+        assert "íntegra" in page.inner_text("#resultado-verificacao"), page.inner_text("#resultado-verificacao")
+        print("selo automático:", page.inner_text("#resultado-verificacao"))
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]")
+        page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
+        assert "7 de 7" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        with page.expect_download() as dl: page.click("#btn-backup")
+        import json as _json
+        bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
+        assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "auditoria"} and bkp["versao_schema"] == 7
+        assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
+        esperar_toast(page, "Backup gerado")
+        page.fill("#ret-meses", "1"); page.click("#btn-retencao")
+        page.locator("#ret-resultado:not(:empty)").wait_for(timeout=8000); print("retenção:", page.inner_text("#ret-resultado"))
+        assert "Nenhum protocolo concluído com mais de 1 mês." in page.inner_text("#ret-resultado")
+        page.fill("#ret-meses", "0"); page.click("#btn-retencao"); page.wait_for_timeout(500)
+        assert "1 e 600" in page.inner_text("#ret-resultado"), page.inner_text("#ret-resultado")
+        page.click("[data-aba=protocolos]"); page.wait_for_timeout(500)
+        assert "vencem em até 2 dias" in page.inner_text("#k-crit"), page.inner_text("#k-crit")
+        assert "Vence em até 2 dias" in page.inner_text("select[name=alerta]")
+        m = page.request.get(URL + "manifest.webmanifest"); assert m.ok and m.json()["short_name"] == "Protocolo"
+        assert page.locator("link[rel=manifest]").count() == 1 and page.request.get(URL + "assets/icone.svg").ok
+        page.focus("a.pular"); assert page.evaluate("document.activeElement.className") == "pular" and page.locator("a.pular").bounding_box()["y"] >= 0, "link 'Ir para o conteúdo' deve ficar visível ao receber foco"
+        assert page.get_attribute("a.pular", "href") == "#conteudo" and page.locator("main#conteudo").count() == 1
+        page.select_option("select[name=status]", "concluido"); page.wait_for_timeout(500)
+        page.reload(); page.locator("#view-app").wait_for(state="visible"); page.wait_for_timeout(800)
+        assert page.input_value("select[name=status]") == "concluido", "filtro de status deveria ser lembrado"
+        page.click("#btn-limpar"); page.wait_for_timeout(400)
+        assert page.input_value("select[name=status]") == "", "Limpar deve zerar também o filtro lembrado"
+        sair(page)
+        frs = b.new_context(); pf = frs.new_page(); pf.goto(URL); pf.locator("#form-login").wait_for(state="visible")
+        for _ in range(5):
+            pf.fill("input[name=email]", "gestor@teste.local"); pf.fill("input[name=senha]", "errada-errada")
+            pf.click("#form-login button[type=submit]"); pf.wait_for_timeout(300)
+        pf.fill("input[name=senha]", "Trocar@123"); pf.click("#form-login button[type=submit]"); pf.wait_for_timeout(300)
+        assert "Muitas tentativas" in pf.inner_text("#login-erro"), pf.inner_text("#login-erro")
+        assert pf.locator("#view-app").is_hidden(), "login não pode passar durante o bloqueio"
+        frs.close()
+        # ---- verificação em duas etapas (TOTP): cadastro, código no login, servidor recusa só-senha, redefinição, exigência
+        import base64 as _b64, hashlib as _hl, hmac as _hm, struct as _st, time as _tm
+        def totp(seg):
+            chave = _b64.b32decode(seg + "=" * (-len(seg) % 8)); n = int(_tm.time() // 30)
+            h = _hm.new(chave, _st.pack(">Q", n), _hl.sha1).digest(); o = h[-1] & 15
+            return f"{(_st.unpack('>I', h[o:o + 4])[0] & 0x7fffffff) % 1000000:06d}"
+        def cadastrar_mfa(pg):
+            pg.click("#mfa-gerar"); pg.locator("#mfa-cad-qr").wait_for(state="visible")
+            seg = pg.inner_text("#mfa-chave").replace(" ", ""); assert len(seg) >= 16
+            assert pg.get_attribute("#mfa-qr", "src").startswith("data:image/svg+xml")
+            pg.fill("#form-mfa-cad input[name=codigo]", "000000"); pg.click("#mfa-ativar")
+            pg.locator("#form-mfa-cad .erro:not([hidden])").wait_for(timeout=6000)
+            assert "inválido" in pg.inner_text("#form-mfa-cad .erro"), pg.inner_text("#form-mfa-cad .erro")
+            pg.fill("#form-mfa-cad input[name=codigo]", totp(seg)); pg.click("#mfa-ativar")
+            return seg
+        def entrar_ate_codigo(pg):
+            pg.goto(URL); pg.locator("#form-login").wait_for(state="visible")
+            pg.fill("input[name=email]", "gestor@teste.local"); pg.fill("input[name=senha]", SENHA)
+            pg.click("#form-login button[type=submit]"); pg.locator("#dlg-mfa").wait_for(state="visible", timeout=8000)
+        login(page, "gestor")
+        page.click("#btn-mfa"); seg = cadastrar_mfa(page); esperar_toast(page, "ativada")
+        assert psql("select count(*) from auth.mfa_factors where status='verified'") == "1"
+        page.wait_for_timeout(500); assert psql("select count(*) from public.auditoria where acao='MFA_ATIVADO'") == "1"
+        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_visible()
+        page.click("#mfa-cad-fechar"); sair(page)
+        entrar_ate_codigo(page)
+        sondagem = page.evaluate("""async () => {
+          const s = Object.values(sessionStorage).map((v) => { try { return JSON.parse(v); } catch { return null; } }).find((x) => x && x.access_token);
+          const h = { apikey: 'x', Authorization: 'Bearer ' + s.access_token, 'Content-Type': 'application/json' };
+          const a = await fetch('/rest/v1/rpc/exportar_backup', { method: 'POST', headers: h, body: '{}' });
+          const b = await fetch('/rest/v1/perfis?select=nome&user_id=eq.' + s.uid, { headers: h });
+          return [a.status, await b.text()]; }""")
+        assert sondagem[0] == 400 and sondagem[1].strip() == "[]", ("servidor deveria recusar sessão só com senha", sondagem)
+        page.reload(); page.locator("#dlg-mfa").wait_for(state="visible", timeout=8000)     # recarregar não pula o código
+        page.fill("#form-mfa input[name=codigo]", "000000"); page.click("#form-mfa button[type=submit]")
+        page.locator("#form-mfa .erro:not([hidden])").wait_for(timeout=6000)
+        page.fill("#form-mfa input[name=codigo]", totp(seg)); page.click("#form-mfa button[type=submit]")
+        page.locator("#view-app").wait_for(state="visible", timeout=8000); page.wait_for_timeout(500)
+        assert page.locator("#usr-nome").inner_text().strip() != "", "perfil carregado após o código"
+        sair(page); entrar_ate_codigo(page); page.click("#mfa-cancelar"); page.locator("#view-login").wait_for(state="visible")
+        assert "cancelada" in page.inner_text("#login-erro"), page.inner_text("#login-erro")
+        # gestor redefine a verificação de outro usuário
+        psql("insert into auth.mfa_factors (user_id, status) select id, 'verified' from auth.users where email='portaria@teste.local'")
+        entrar_ate_codigo(page); page.fill("#form-mfa input[name=codigo]", totp(seg)); page.click("#form-mfa button[type=submit]")
+        page.locator("#view-app").wait_for(state="visible"); page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]")
+        linha = page.locator("#tbody-usr tr:has-text('Maria (Portaria)')"); linha.wait_for()
+        assert "2 etapas" in linha.inner_text() and linha.locator("[data-uacao=mfa]").count() == 1
+        assert page.locator("#tbody-usr tr:has-text('Paula')").count() == 0 or page.locator("#tbody-usr tr:has-text('Gestor') [data-uacao=mfa]").count() == 0, "ninguém redefine a própria"
+        linha.locator("[data-uacao=mfa]").click(); page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
+        esperar_toast(page, "redefinida"); assert psql("select count(*) from auth.mfa_factors where user_id=(select id from auth.users where email='portaria@teste.local')") == "0"
+        # exigência para o gestor: desativa a própria, liga a regra, o próximo acesso obriga o cadastro
+        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible")
+        page.once("dialog", lambda d: d.accept()); page.click("#mfa-desativar"); esperar_toast(page, "desativada")
+        assert psql("select count(*) from auth.mfa_factors") == "0"
+        page.click("#btn-aba-painel"); page.click("[data-sub=parametros]"); page.locator("#form-param input[name=mfa_gestor_obrigatorio]").wait_for(); page.wait_for_timeout(900)
+        page.check("#form-param input[name=mfa_gestor_obrigatorio]"); page.click("#param-salvar"); esperar_toast(page, "Alterações salvas"); page.wait_for_timeout(500)
+        assert psql("select valor from public.parametros where chave='mfa_gestor_obrigatorio'") == "true"
+        sair(page); page.goto(URL); page.locator("#form-login").wait_for(state="visible")
+        page.fill("input[name=email]", "gestor@teste.local"); page.fill("input[name=senha]", SENHA); page.click("#form-login button[type=submit]")
+        page.locator("#dlg-mfa-cad").wait_for(state="visible", timeout=8000)
+        assert page.inner_text("#mfa-cad-fechar") == "Sair" and "precisa usar" in page.inner_text("#mfa-cad-info")
+        assert page.locator("#view-app").is_hidden(), "sem cadastro o gestor não entra"
+        seg = cadastrar_mfa(page); page.locator("#view-app").wait_for(state="visible", timeout=8000); page.wait_for_timeout(500)
+        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_hidden(), "exigida: não pode desativar"
+        page.click("#mfa-cad-fechar")
+        # limpeza: volta ao estado sem exigência para o restante da bateria
+        psql("update public.parametros set valor='false' where chave='mfa_gestor_obrigatorio'"); psql("delete from auth.mfa_factors")
+        sair(page)
+        # logout por inatividade: relógio simulado (6 h = padrão do banco)
+        rel = b.new_context(); pr = rel.new_page(); pr.clock.install()
+        login(pr, "gestor"); pr.clock.fast_forward("05:00:00"); pr.wait_for_timeout(300)
+        assert pr.locator("#view-app").is_visible(), "5 h parado ainda não deve deslogar (limite de 6 h)"
+        assert pr.locator("#dlg-inatividade").is_hidden(), "sem aviso quando ainda falta muito"
+        pr.clock.fast_forward("00:59:30"); pr.wait_for_timeout(400)         # faltam ~30 s
+        assert pr.locator("#dlg-inatividade").is_visible(), "aviso deveria aparecer no último minuto"
+        seg = int(pr.inner_text("#inat-seg")); assert 20 <= seg <= 31, seg
+        pr.click("#inat-continuar"); pr.wait_for_timeout(300)
+        assert pr.locator("#dlg-inatividade").is_hidden() and pr.locator("#view-app").is_visible(), "Continuar reinicia a contagem"
+        pr.clock.fast_forward("05:59:35"); pr.wait_for_timeout(400)
+        assert pr.locator("#dlg-inatividade").is_visible(); pr.click("#inat-sair"); pr.locator("#view-login").wait_for(state="visible", timeout=8000)
+        login(pr, "gestor")
+        pr.mouse.click(5, 5); pr.clock.fast_forward("05:30:00"); pr.wait_for_timeout(300)
+        assert pr.locator("#view-app").is_visible(), "atividade recente reinicia a contagem"
+        pr.clock.fast_forward("06:30:00"); pr.locator("#view-login").wait_for(state="visible", timeout=8000)
+        assert "inatividade" in pr.inner_text("#login-erro") + pr.inner_text("#toast"), "mensagem de inatividade esperada"
+        rel.close()
         login(page, "gestor")
         # layout móvel
         page.set_viewport_size({"width": 390, "height": 800}); page.click("[data-aba=protocolos]"); page.wait_for_timeout(300)
