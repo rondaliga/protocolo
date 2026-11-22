@@ -299,3 +299,7 @@ com os quatro perfis).
 ## 8. Próximos passos sugeridos
 Cadastro de MFA (TOTP); relatório mensal de
 cumprimento de prazos por setor; push com o navegador fechado; rotina de backup automatizada (GitHub Actions + `pg_dump`).
+
+
+## Nota: reexecutar o schema.sql
+Se o `schema.sql` for executado novamente em um banco já migrado, rode em seguida `02_prazos_alertas.sql`, `03_painel_gestor.sql` e `04_logo_horas_exclusoes.sql`, nesta ordem, para restaurar a visão `v_livro` ampliada, as funções e as permissões. O erro `42P16: cannot drop columns from view` ocorria porque `create or replace view` não pode remover colunas; o `schema.sql` agora recria a visão com `drop view if exists`.

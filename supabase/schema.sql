@@ -472,7 +472,9 @@ end $$;
 -- ---------------------------------------------------------------------
 -- 7. VISÃO E RPCs DE LEITURA (SECURITY INVOKER => respeitam a RLS)
 -- ---------------------------------------------------------------------
-create or replace view public.v_livro with (security_invoker = true) as
+-- (drop antes: o CREATE OR REPLACE não permite remover colunas; o 02 recria a visão ampliada)
+drop view if exists public.v_livro;
+create view public.v_livro with (security_invoker = true) as
 select p.id, p.numero, p.status, p.created_at,
        coalesce((select c.descricao_nova from public.correcoes_descricao c
                   where c.protocolo_id = p.id order by c.id desc limit 1), p.descricao) as descricao,
