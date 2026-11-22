@@ -1,0 +1,724 @@
+-- Testes do schema.sql. Rode via run_local.sh (usa psql, banco descartável).
+\set ON_ERROR_STOP on
+\set QUIET on
+create schema if not exists t;
+
+-- Executa SQL "como" um usuário (role authenticated + auth.uid()), devolvendo resultado ou 'ERRO: ...'
+create or replace function t.como(p_email text, p_sql text) returns text language plpgsql as $$
+declare v_res text; v_uid uuid;
+begin
+  select id into v_uid from auth.users where email = p_email;
+  perform set_config('request.jwt.claim.sub', coalesce(v_uid::text, ''), true);
+  execute 'set local role ' || case when p_email = 'anon' then 'anon' else 'authenticated' end;
+  begin
+    execute p_sql into v_res;
+  exception when others then
+    v_res := 'ERRO: ' || sqlerrm;
+  end;
+  reset role;
+  return v_res;
+end $$;
+
+create or replace function t.afirma(p_nome text, p_ok boolean, p_detalhe text default '') returns void
+language plpgsql as $$
+begin
+  if p_ok then raise notice 'ok   - %', p_nome;
+  else raise exception 'FALHOU - %  [%]', p_nome, p_detalhe; end if;
+end $$;
+
+-- ---------------------------------------------------------------- massa de dados
+insert into auth.users (email) values ('portaria@x'),('adm@x'),('jur@x'),('far@x'),('gestor@x'),('anon-sem-perfil@x');
+select public.admin_cadastrar_perfil('portaria@x','Maria Portaria','portaria',null,'1111');
+select public.admin_cadastrar_perfil('adm@x','João ADM','adm',null,'2222');
+select public.admin_cadastrar_perfil('jur@x','Ana Jurídico','super_setor','Jurídico','3333');
+select public.admin_cadastrar_perfil('far@x','Carlos Farmácia','super_setor','Farmácia','4444');
+select public.admin_cadastrar_perfil('gestor@x','Paula Gestora','gestor',null,'5555');
+
+do $$
+declare r text; j jsonb; v_id bigint; v_num text;
+begin
+  -- 1. acesso anônimo e usuário sem perfil
+  r := t.como('anon', 'select count(*)::text from public.protocolos');
+  perform t.afirma('anon não lê protocolos', r like 'ERRO:%', r);
+  r := t.como('anon', $q$select public.registrar_protocolo('Ofício teste 1','1111')::text$q$);
+  perform t.afirma('anon não executa RPC', r like 'ERRO:%', r);
+  r := t.como('anon-sem-perfil@x', 'select count(*)::text from public.protocolos');
+  perform t.afirma('autenticado sem perfil enxerga 0 protocolos', r = '0', r);
+  r := t.como('anon-sem-perfil@x', $q$select public.registrar_protocolo('Ofício teste 1','1111')::text$q$);
+  perform t.afirma('autenticado sem perfil não registra', r like 'ERRO:%permiss%', r);
+
+  -- 2. PIN e criação
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício nº 123/2026 - 2ª Vara Cível','9999')::text$q$);
+  perform t.afirma('PIN errado retorna ok=false (sem exceção)', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Intimação de 123.456.789-09','1111')::text$q$);
+  perform t.afirma('CPF na descrição é recusado', r like 'ERRO:%CPF%', r);
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Mandado proc. 0001234-56.2026.8.20.0001 - 1ª Vara','1111')::text$q$);
+  perform t.afirma('nº de processo CNJ não é confundido com CPF', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício nº 123/2026 - 2ª Vara Cível','1111')::text$q$);
+  j := r::jsonb;
+  perform t.afirma('criação ok e numeração sequencial', (j->>'ok') = 'true' and j->>'numero' ~ '^\d{4}-0002$', r);
+  v_id := (j->>'id')::bigint; v_num := j->>'numero';
+  r := t.como('adm@x', $q$select public.registrar_protocolo('Outro ofício qualquer','2222')::text$q$);
+  perform t.afirma('ADM não pode criar protocolo', r like 'ERRO:%permiss%', r);
+
+  -- 3. sequência rígida e visibilidade do setor
+  r := t.como('portaria@x', format($q$select public.confirmar_etapa(%s,2,'1111')::text$q$, v_id));
+  perform t.afirma('Portaria não confirma etapa do ADM', r like 'ERRO:%permiss%', r);
+  r := t.como('jur@x', format($q$select public.confirmar_etapa(%s,3,'3333')::text$q$, v_id));
+  perform t.afirma('Setor não pula o ADM (e não descobre o protocolo)', r like 'ERRO:%não encontrado%', r);
+  r := t.como('jur@x', $q$select (public.listar_livro()->>'total')$q$);
+  perform t.afirma('Setor não vê protocolos pendentes no ADM', r = '0', r);
+
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,(select id from public.setores where nome='Jurídico'))::text$q$, v_id));
+  perform t.afirma('ADM confirma 2ª etapa', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,(select id from public.setores where nome='Jurídico'))::text$q$, v_id));
+  perform t.afirma('ADM não confirma duas vezes', r like 'ERRO:%', r);
+  r := t.como('jur@x', $q$select (public.listar_livro()->>'total')$q$);
+  perform t.afirma('Setor passa a ver o protocolo pendente_setor', r = '1', r);
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,3,'2222')::text$q$, v_id));
+  perform t.afirma('ADM não confirma etapa do setor', r like 'ERRO:%permiss%', r);
+  r := t.como('jur@x', format($q$select public.confirmar_etapa(%s,3,'3333')::text$q$, v_id));
+  perform t.afirma('Setor confirma 3ª etapa', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('jur@x', format($q$select public.confirmar_etapa(%s,3,'3333')::text$q$, v_id));
+  perform t.afirma('protocolo concluído não aceita novo aceite', r like 'ERRO:%conclu%', r);
+  r := t.como('far@x', $q$select (public.listar_livro()->>'total')$q$);
+  perform t.afirma('outro setor NÃO vê protocolo concluído em Jurídico', r = '0', r);
+  r := t.como('jur@x', $q$select (public.listar_livro()->>'total')$q$);
+  perform t.afirma('setor destinatário vê o seu', r = '1', r);
+  r := t.como('gestor@x', format($q$select (public.detalhe_protocolo(%s)->>'status')$q$, v_id));
+  perform t.afirma('status derivado = concluido', r = 'concluido', r);
+  r := t.como('gestor@x', format($q$select jsonb_array_length(public.detalhe_protocolo(%s)->'etapas')::text$q$, v_id));
+  perform t.afirma('detalhe traz as 3 etapas', r = '3', r);
+  r := t.como('far@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('detalhe oculto para outro setor', r = 'true', r);
+
+  -- 4. escrita direta e imutabilidade
+  r := t.como('gestor@x', $q$insert into public.protocolos (numero,descricao,status,created_by) values ('9999-0001','abcdef','pendente_adm', auth.uid())$q$);
+  perform t.afirma('cliente não insere direto em protocolos', r like 'ERRO:%', r);
+  r := t.como('portaria@x', format($q$update public.protocolos set descricao='adulterada' where id=%s$q$, v_id));
+  perform t.afirma('cliente não atualiza protocolos', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$delete from public.tramites$q$);
+  perform t.afirma('cliente não apaga tramites', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select pin_hash from public.perfis$q$);
+  perform t.afirma('cliente não lê pin_hash', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select count(*)::text from public.perfis$q$);
+  perform t.afirma('contagem de perfis permitida ao gestor', r = '5', r);
+  r := t.como('portaria@x', $q$select count(*)::text from public.perfis$q$);
+  perform t.afirma('portaria só vê o próprio perfil', r = '1', r);
+  r := t.como('portaria@x', $q$select count(*)::text from public.sequencias$q$);
+  perform t.afirma('sequencias inacessível ao cliente', r like 'ERRO:%', r);
+
+  -- como dono do banco (service_role / SQL Editor): triggers continuam valendo
+  begin update public.tramites set recebido_em = '2000-01-01' where protocolo_id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia UPDATE em tramites (mesmo para o dono)', true);
+  begin delete from public.tramites where protocolo_id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia DELETE em tramites', true);
+  begin update public.protocolos set descricao = 'x adulterada' where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia alterar descrição original', true);
+  begin update public.protocolos set numero = '1999-0001' where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia alterar número', true);
+  begin update public.protocolos set status = 'pendente_adm' where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia regressão de status', true);
+  begin delete from public.protocolos where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia DELETE em protocolos', true);
+  begin truncate public.auditoria;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia TRUNCATE na auditoria', true);
+  begin update public.auditoria set acao = 'X';
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('trigger bloqueia UPDATE na auditoria', true);
+
+  -- sequência garantida também no banco: etapa 3 direto num protocolo só com a 1ª
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta A.R. Correios','1111')::text$q$);
+  v_id := (r::jsonb->>'id')::bigint;
+  begin
+    insert into public.tramites (protocolo_id, etapa, usuario_id, usuario_nome, setor_id, setor_nome, assinatura_tipo, selo)
+    values (v_id, 3, (select id from auth.users limit 1), 'x', 1, 'x', 'pin', 'x');
+    raise exception 'não deveria permitir';
+  exception when sqlstate '23514' then null; end;
+  perform t.afirma('trigger impede etapa 3 sem a etapa 2', true);
+
+  -- 5. correção de descrição
+  r := t.como('portaria@x', format($q$select public.corrigir_descricao(%s,'Carta A.R. Correios - Vara Federal','curta','1111')::text$q$, v_id));
+  perform t.afirma('correção exige justificativa >= 10', r like 'ERRO:%justificativa%', r);
+  r := t.como('jur@x', format($q$select public.corrigir_descricao(%s,'Carta A.R. Correios - Vara Federal','Erro de digitação na descrição','3333')::text$q$, v_id));
+  perform t.afirma('setor não corrige descrição', r like 'ERRO:%permiss%', r);
+  r := t.como('portaria@x', format($q$select public.corrigir_descricao(%s,'Carta A.R. Correios - Vara Federal','Erro de digitação na descrição','0000')::text$q$, v_id));
+  perform t.afirma('correção exige PIN correto', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('portaria@x', format($q$select public.corrigir_descricao(%s,'Carta A.R. Correios - Vara Federal','Erro de digitação na descrição','1111')::text$q$, v_id));
+  perform t.afirma('correção registrada', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('gestor@x', format($q$select (public.detalhe_protocolo(%s)->>'descricao') || ' | ' || (public.detalhe_protocolo(%s)->>'descricao_original')$q$, v_id, v_id));
+  perform t.afirma('descrição atual muda e a original é preservada', r = 'Carta A.R. Correios - Vara Federal | Carta A.R. Correios', r);
+
+  r := t.como('portaria@x', $q$select public.registrar_acesso('LOGIN')::text$q$);
+  perform t.afirma('registrar_acesso grava LOGIN', r is not null and r not like 'ERRO:%', r);
+  r := t.como('portaria@x', $q$select public.registrar_acesso('PROTOCOLO_CRIADO')::text$q$);
+  perform t.afirma('registrar_acesso recusa eventos arbitrários', r like 'ERRO:%', r);
+
+  -- 6. filtros e busca (curingas tratados como texto)
+  r := t.como('gestor@x', $q$select (public.listar_livro('Vara Federal')->>'total')$q$);
+  perform t.afirma('busca encontra pela descrição corrigida', r = '1', r);
+  r := t.como('gestor@x', $q$select (public.listar_livro('%')->>'total')$q$);
+  perform t.afirma('curinga % tratado como texto', r = '0', r);
+  r := t.como('gestor@x', $q$select (public.listar_livro(null,'concluido')->>'total')$q$);
+  perform t.afirma('filtro por status', r = '1', r);
+  r := t.como('gestor@x', $q$select (public.resumo_livro()->>'total') || '/' || (public.resumo_livro()->>'pendente_adm') || '/' || (public.resumo_livro()->>'concluido')$q$);
+  perform t.afirma('resumo (total/pendente_adm/concluido)', r = '3/2/1', r);
+
+  -- 7. auditoria
+  r := t.como('portaria@x', $q$select count(*)::text from public.auditoria$q$);
+  perform t.afirma('portaria não lê auditoria', r = '0', r);
+  r := t.como('gestor@x', $q$select (public.verificar_auditoria()->>'ok')$q$);
+  perform t.afirma('cadeia de auditoria íntegra', r = 'true', r);
+  r := t.como('portaria@x', $q$select (public.verificar_auditoria()->>'ok')$q$);
+  perform t.afirma('portaria não verifica auditoria', r like 'ERRO:%', r);
+  begin   -- adulteração simulada dentro de um sub-bloco que é desfeito (não deixa o gatilho desligado)
+    alter table public.auditoria disable trigger trg_auditoria_imutavel;
+    update public.auditoria set detalhes = '{"adulterado":true}'::jsonb where id = (select min(id) from public.auditoria where acao = 'PROTOCOLO_CRIADO');
+    r := t.como('gestor@x', $q$select (public.verificar_auditoria()->>'ok')$q$);
+    raise exception 'desfazer-simulacao';
+  exception when others then
+    if sqlerrm <> 'desfazer-simulacao' then raise; end if;
+  end;
+  perform t.afirma('adulteração da auditoria é detectada', r = 'false', r);
+end $$;
+
+
+-- ================================================================= v2: prazos, SLA, foto, destino, alertas
+do $$
+declare r text; j jsonb; v_id bigint; v_id2 bigint; v_uid uuid; v_foto text; v_foto2 text; v_seg text := repeat('s3gr3d0-', 6);
+        v_jur bigint := (select id from public.setores where nome='Jurídico');
+        v_far bigint := (select id from public.setores where nome='Farmácia');
+begin
+  select id into v_uid from auth.users where email = 'portaria@x';
+
+  -- horas e dias úteis (Fortaleza = UTC-3)
+  r := to_char(public._somar_horas_uteis('2026-11-27 16:00-03'::timestamptz, 4) at time zone 'America/Fortaleza', 'YYYY-MM-DD HH24:MI');
+  perform t.afirma('4h úteis a partir de sexta 16h → segunda 11h', r = '2026-11-30 11:00', r);
+  r := to_char(public._somar_horas_uteis('2026-11-28 10:00-03'::timestamptz, 2) at time zone 'America/Fortaleza', 'YYYY-MM-DD HH24:MI');
+  perform t.afirma('sábado conta a partir de segunda 8h', r = '2026-11-30 10:00', r);
+  r := to_char(public._somar_horas_uteis('2026-11-24 07:00-03'::timestamptz, 9) at time zone 'America/Fortaleza', 'YYYY-MM-DD HH24:MI');
+  perform t.afirma('9h úteis = um dia útil de expediente', r = '2026-11-24 17:00', r);
+  r := public._somar_dias_uteis('2026-11-27', 5)::text;
+  perform t.afirma('5 dias úteis a partir de 27/11', r = '2026-12-04', r);
+  r := public._somar_dias_uteis('2026-11-19', 1)::text;
+  perform t.afirma('feriado 20/11 e fim de semana são pulados', r = '2026-11-23', r);
+
+  -- foto e regras do registro
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Mandado de segurança - 3ª Vara','1111',null,'judicial',false,null)::text$q$);
+  perform t.afirma('judicial exige foto', r like 'ERRO:%foto%', r);
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta simples','1111',null,'correspondencia',true,null)::text$q$);
+  perform t.afirma('urgência só para judicial', r like 'ERRO:%urg%', r);
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta simples','1111',null,'outro',false,null)::text$q$);
+  perform t.afirma('tipo inválido é recusado', r like 'ERRO:%', r);
+
+  v_foto := v_uid::text || '/' || gen_random_uuid()::text || '.jpg';
+  r := t.como('portaria@x', format($q$select public.registrar_protocolo('Mandado de segurança - 3ª Vara','1111',null,'judicial',true,%L)::text$q$, v_foto));
+  perform t.afirma('foto inexistente no storage é recusada', r like 'ERRO:%não foi encontrada%', r);
+  r := t.como('portaria@x', format($q$select public.registrar_protocolo('Mandado','1111',null,'judicial',false,%L)::text$q$, 'outro-uid/' || gen_random_uuid()::text || '.jpg'));
+  perform t.afirma('caminho de foto de outra pasta é recusado', r like 'ERRO:%inválido%', r);
+
+  r := t.como('portaria@x', format($q$insert into storage.objects (bucket_id,name,owner,metadata) values ('protocolo-fotos',%L,auth.uid(),'{"size":1000}') returning 'ok'$q$, v_foto));
+  perform t.afirma('portaria envia foto à própria pasta', r = 'ok', r);
+  r := t.como('adm@x', format($q$insert into storage.objects (bucket_id,name,owner,metadata) values ('protocolo-fotos',%L,auth.uid(),'{"size":1}') returning 'ok'$q$, (select id from auth.users where email='adm@x')::text || '/' || gen_random_uuid()::text || '.jpg'));
+  perform t.afirma('ADM não envia foto', r like 'ERRO:%', r);
+  r := t.como('portaria@x', format($q$insert into storage.objects (bucket_id,name,owner,metadata) values ('protocolo-fotos',%L,auth.uid(),'{"size":1}') returning 'ok'$q$, 'outra-pasta/' || gen_random_uuid()::text || '.jpg'));
+  perform t.afirma('portaria não envia foto para pasta alheia', r like 'ERRO:%', r);
+
+  r := t.como('portaria@x', format($q$select public.registrar_protocolo('Mandado de segurança - 3ª Vara','1111',null,'judicial',true,%L)::text$q$, v_foto));
+  j := r::jsonb;
+  perform t.afirma('judicial urgente com foto é registrado', (j->>'ok') = 'true', r);
+  v_id := (j->>'id')::bigint;
+  r := t.como('portaria@x', format($q$select public.registrar_protocolo('Outro mandado - 4ª Vara','1111',null,'judicial',false,%L)::text$q$, v_foto));
+  perform t.afirma('a mesma foto não vale para dois protocolos', r like 'ERRO:%já foi usada%', r);
+
+  r := t.como('gestor@x', format($q$select (public.detalhe_protocolo(%s)->>'prazo_data') || '|' || (public.detalhe_protocolo(%s)->>'tipo') || '|' || (public.detalhe_protocolo(%s)->>'n_fotos')$q$, v_id, v_id, v_id));
+  perform t.afirma('prazo padrão de 5 dias úteis, tipo e foto', r = public._somar_dias_uteis((now() at time zone 'America/Fortaleza')::date, 5)::text || '|judicial|1', r);
+  r := t.como('gestor@x', format($q$select (sla_limite > now())::text from public.v_livro where id=%s$q$, v_id));
+  perform t.afirma('SLA do ADM definido no futuro', r = 'true', r);
+
+  -- visibilidade da foto
+  r := t.como('adm@x', format($q$select count(*)::text from public.protocolo_fotos where protocolo_id=%s$q$, v_id));
+  perform t.afirma('ADM vê a foto vinculada', r = '1', r);
+  r := t.como('far@x', format($q$select count(*)::text from public.protocolo_fotos where protocolo_id=%s$q$, v_id));
+  perform t.afirma('setor sem acesso não vê a foto', r = '0', r);
+  r := t.como('far@x', format($q$select count(*)::text from storage.objects where name=%L$q$, v_foto));
+  perform t.afirma('setor sem acesso não lê o arquivo', r = '0', r);
+  r := t.como('adm@x', format($q$select count(*)::text from storage.objects where name=%L$q$, v_foto));
+  perform t.afirma('ADM lê o arquivo', r = '1', r);
+
+  -- e-mail de chegada (sem descrição)
+  perform t.afirma('e-mail de chegada enfileirado para o ADM',
+    exists (select 1 from public.fila_email where chave = 'chegada:' || v_id and destinatarios = array['adm@x'] and assunto like '%URGENTE%'));
+  perform t.afirma('e-mail não vaza a descrição',
+    not exists (select 1 from public.fila_email where corpo ilike '%Mandado de seguran%' or assunto ilike '%Mandado de seguran%'));
+
+  -- ADM: destino obrigatório
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222')::text$q$, v_id));
+  perform t.afirma('ADM precisa escolher o setor de destino', r like 'ERRO:%destino%', r);
+  r := t.como('jur@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('setor não vê protocolo antes do ADM', r = 'true', r);
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, v_id, v_far));
+  perform t.afirma('ADM encaminha à Farmácia', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('jur@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('Jurídico não vê o que foi para a Farmácia', r = 'true', r);
+  r := t.como('jur@x', format($q$select public.confirmar_etapa(%s,3,'3333')::text$q$, v_id));
+  perform t.afirma('Jurídico não confirma protocolo da Farmácia', r like 'ERRO:%não encontrado%', r);
+  r := t.como('far@x', format($q$select (public.detalhe_protocolo(%s)->>'setor_destino_nome')$q$, v_id));
+  perform t.afirma('Farmácia vê o protocolo encaminhado', r = 'Farmácia', r);
+  perform t.afirma('e-mail de encaminhamento só para a Farmácia',
+    exists (select 1 from public.fila_email where chave = 'encaminhado:' || v_id and destinatarios = array['far@x']));
+  begin update public.protocolos set setor_destino_id = v_jur where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('destino não pode ser trocado depois', true);
+  begin update public.protocolos set tipo = 'correspondencia' where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('tipo é imutável', true);
+
+  -- pendências (sino)
+  r := t.como('far@x', $q$select (public.minhas_pendencias()->>'total')$q$);
+  perform t.afirma('Farmácia tem 1 pendência', r = '1', r);
+  r := t.como('jur@x', $q$select (public.minhas_pendencias()->>'total')$q$);
+  perform t.afirma('Jurídico tem 0 pendências', r = '0', r);
+  r := t.como('adm@x', $q$select (public.minhas_pendencias()->>'total')$q$);
+  perform t.afirma('ADM tem as pendências do seu estágio', r::int >= 2, r);
+
+  -- ajuste de prazo
+  r := t.como('far@x', format($q$select public.ajustar_prazo(%s, current_date + 20, 'Prazo real consta no mandado', '4444')::text$q$, v_id));
+  perform t.afirma('setor não ajusta prazo', r like 'ERRO:%permiss%', r);
+  r := t.como('adm@x', format($q$select public.ajustar_prazo(%s, current_date + 20, 'curta', '2222')::text$q$, v_id));
+  perform t.afirma('ajuste exige justificativa', r like 'ERRO:%justificativa%', r);
+  r := t.como('adm@x', format($q$select public.ajustar_prazo(%s, current_date + 20, 'Prazo real consta no mandado', '0000')::text$q$, v_id));
+  perform t.afirma('ajuste exige PIN', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('adm@x', format($q$select public.ajustar_prazo(%s, current_date - 400, 'Prazo real consta no mandado', '2222')::text$q$, v_id));
+  perform t.afirma('data anterior ao registro é recusada', r like 'ERRO:%inválida%', r);
+  r := t.como('adm@x', format($q$select public.ajustar_prazo(%s, (now() at time zone 'America/Fortaleza')::date + 20, 'Prazo real consta no mandado', '2222')::text$q$, v_id));
+  perform t.afirma('ADM ajusta prazo', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('gestor@x', format($q$select jsonb_array_length(public.detalhe_protocolo(%s)->'prazos')::text$q$, v_id));
+  perform t.afirma('histórico do prazo registrado', r = '1', r);
+  begin delete from public.prazo_historico;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('histórico de prazo é imutável', true);
+
+  -- semáforo e escalada (simulando passagem do tempo como dono do banco)
+  r := t.como('gestor@x', format($q$select semaforo from public.v_livro where id=%s$q$, v_id));
+  perform t.afirma('semáforo ok com 20 dias', r = 'ok', r);
+  alter table public.protocolos disable trigger user;
+  update public.protocolos set prazo_data = (now() at time zone 'America/Fortaleza')::date - 1,
+                               sla_limite = now() - interval '1 hour' where id = v_id;
+  alter table public.protocolos enable trigger user;
+  r := t.como('gestor@x', format($q$select semaforo || '/' || sla_estourado::text from public.v_livro where id=%s$q$, v_id));
+  perform t.afirma('semáforo vencido e SLA estourado', r = 'vencido/true', r);
+  r := t.como('gestor@x', $q$select (public.resumo_livro()->>'vencidos') || '/' || (public.resumo_livro()->>'sla_estourado')$q$);
+  perform t.afirma('KPIs de vencidos e SLA', r = '1/1', r);
+  r := t.como('gestor@x', $q$select (public.listar_livro(null,null,null,null,25,0,'vencidos')->>'total')$q$);
+  perform t.afirma('filtro de vencidos', r = '1', r);
+  r := t.como('gestor@x', $q$select (public.minhas_pendencias()->>'total')$q$);
+  perform t.afirma('gestor vê pendências críticas', r::int >= 1, r);
+
+  r := public._verificar_sla()::text;
+  perform t.afirma('verificação gera avisos novos', r::int >= 2, r);
+  perform t.afirma('aviso de SLA vai ao setor atual e ao gestor',
+    exists (select 1 from public.fila_email where chave = 'sla:' || v_id || ':3' and destinatarios @> array['far@x','gestor@x']));
+  perform t.afirma('aviso de prazo vencido enfileirado', exists (select 1 from public.fila_email where chave = 'vencido:' || v_id));
+  r := public._verificar_sla()::text;
+  perform t.afirma('verificação repetida não duplica avisos', r = '0', r);
+
+  -- integração (e-mail) protegida por segredo
+  r := t.como('anon', $q$select public.integracao_fila('segredo-errado-segredo-errado-12345')::text$q$);
+  perform t.afirma('integração sem segredo configurado é recusada', r like 'ERRO:%autorizado%', r);
+  perform public.admin_definir_segredo_integracao(v_seg);
+  r := t.como('anon', $q$select public.integracao_fila('segredo-errado-segredo-errado-12345')::text$q$);
+  perform t.afirma('segredo errado é recusado', r like 'ERRO:%autorizado%', r);
+  r := t.como('anon', format($q$select jsonb_array_length(public.integracao_fila(%L))::text$q$, v_seg));
+  perform t.afirma('segredo certo lê a fila', r::int >= 3, r);
+  r := t.como('anon', format($q$select public.integracao_marcar(%L, %s, true)::text$q$, v_seg, (select min(id) from public.fila_email)));
+  perform t.afirma('segredo certo marca envio', r is not null and r not like 'ERRO:%', r);
+  perform t.afirma('item marcado como enviado', (select status from public.fila_email order by id limit 1) = 'enviado');
+  r := t.como('anon', $q$select count(*)::text from public.fila_email$q$);
+  perform t.afirma('anon não lê a fila diretamente', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select count(*)::text from public.fila_email$q$);
+  perform t.afirma('usuário autenticado não lê a fila', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select count(*)::text from public.parametros$q$);
+  perform t.afirma('parâmetros inacessíveis ao cliente', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.integracao_verificar('x')::text$q$);
+  perform t.afirma('autenticado não executa integração', r like 'ERRO:%', r);
+
+  -- parâmetros
+  perform public.admin_definir_parametro('prazo_judicial_dias', '3');
+  begin perform public.admin_definir_parametro('prazo_judicial_dias', 'abc'); raise exception 'não deveria'; exception when others then
+    perform t.afirma('parâmetro numérico inválido é recusado', sqlerrm like '%inteiro%', sqlerrm); end;
+  begin perform public.admin_definir_parametro('url_sistema', 'http://inseguro'); raise exception 'não deveria'; exception when others then
+    perform t.afirma('url_sistema exige https', sqlerrm like '%https%', sqlerrm); end;
+  perform public.admin_definir_parametro('prazo_judicial_dias', '5');
+end $$;
+
+
+-- ================================================================= v3: gestor com acesso total, painel, trilha, assinatura digitada
+do $$
+declare r text; j jsonb; v_id bigint; v_id2 bigint; v_u uuid; v_u2 uuid; v_h text;
+        v_png text := 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+        v_jur bigint := (select id from public.setores where nome='Jurídico');
+        v_far bigint := (select id from public.setores where nome='Farmácia');
+begin
+  -- ---------- gestor com acesso total ----------
+  r := t.como('gestor@x', format($q$select public.registrar_protocolo('Ofício do gestor - Vara Única','5555',%L,'correspondencia',false,null,'digitada')::text$q$, v_png));
+  j := r::jsonb; v_id := (j->>'id')::bigint;
+  perform t.afirma('gestor registra protocolo (Portaria)', (j->>'ok') = 'true', r);
+  r := (select assinatura_tipo from public.tramites where protocolo_id = v_id and etapa = 1);
+  perform t.afirma('assinatura digitada gravada como pin_digitada', r = 'pin_digitada', r);
+  r := t.como('gestor@x', format($q$select public.registrar_protocolo('Ofício do gestor 2','5555',%L,'correspondencia',false,null,'cursiva')::text$q$, v_png));
+  perform t.afirma('modo de assinatura inválido é recusado', r like 'ERRO:%Modo%', r);
+  r := t.como('gestor@x', format($q$select public.confirmar_etapa(%s,3,'5555')::text$q$, v_id));
+  perform t.afirma('gestor não pula o ADM na 3ª etapa', r like 'ERRO:%aguarda o recebimento do ADM%', r);
+  r := t.como('gestor@x', format($q$select public.confirmar_etapa(%s,2,'5555',null,%s)::text$q$, v_id, v_jur));
+  perform t.afirma('gestor recebe como ADM (mesma pessoa da Portaria)', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('gestor@x', format($q$select public.confirmar_etapa(%s,3,'5555',%L,null,'desenhada')::text$q$, v_id, v_png));
+  perform t.afirma('gestor recebe pelo setor de destino', (r::jsonb->>'ok') = 'true', r);
+  r := (select setor_nome || '/' || assinatura_tipo from public.tramites where protocolo_id = v_id and etapa = 3);
+  perform t.afirma('3ª etapa registra o setor de destino e a assinatura desenhada', r = 'Jurídico/pin_canvas', r);
+  r := (select status from public.protocolos where id = v_id);
+  perform t.afirma('protocolo concluído pelo gestor', r = 'concluido', r);
+  perform public.admin_definir_parametro('gestor_ignora_segregacao', 'false');
+  r := t.como('gestor@x', $q$select public.registrar_protocolo('Ofício do gestor 3','5555')::text$q$);
+  v_id2 := (r::jsonb->>'id')::bigint;
+  r := t.como('gestor@x', format($q$select public.confirmar_etapa(%s,2,'5555',null,%s)::text$q$, v_id2, v_jur));
+  perform t.afirma('com segregação ligada o gestor também precisa de outra pessoa', r like 'ERRO:%Segrega%', r);
+  perform public.admin_definir_parametro('gestor_ignora_segregacao', 'true');
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,3,'2222')::text$q$, v_id2));
+  perform t.afirma('ADM continua sem acesso à 3ª etapa', r like 'ERRO:%permiss%', r);
+  r := t.como('gestor@x', $q$select (public.minhas_pendencias()->>'total')::int >= 1$q$);
+  perform t.afirma('gestor vê todas as pendências em aberto', r = 'true', r);
+
+  -- ---------- painel: controle de acesso ----------
+  foreach r in array array['portaria@x','adm@x','jur@x'] loop
+    perform t.afirma('painel_listar_usuarios negado a ' || r, t.como(r, 'select public.painel_listar_usuarios()::text') like 'ERRO:%gestor%');
+  end loop;
+  r := t.como('adm@x', $q$select public.painel_salvar_setor(null,'Setor Invasor')::text$q$);
+  perform t.afirma('ADM não cria setor', r like 'ERRO:%gestor%', r);
+  r := t.como('adm@x', $q$select public.listar_auditoria()::text$q$);
+  perform t.afirma('ADM não lê a trilha organizada', r like 'ERRO:%gestor%', r);
+  r := t.como('anon', $q$select public.painel_resumo()::text$q$);
+  perform t.afirma('anon não acessa o painel', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select jsonb_array_length(public.painel_listar_usuarios())::text$q$);
+  perform t.afirma('gestor lista usuários', r::int >= 5, r);
+  r := t.como('gestor@x', $q$select count(*)::text from (select unnest(array(select jsonb_object_keys(e) from jsonb_array_elements(public.painel_listar_usuarios()) e limit 40))) k where unnest ~ 'pin_hash|senha_provisoria'$q$);
+  perform t.afirma('lista de usuários não expõe hashes', r = '0', r);
+
+  -- ---------- criar usuário ----------
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','adm',null,'Senha-Forte-123','2468','0000')::text$q$);
+  perform t.afirma('criar usuário exige o PIN do gestor', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','adm',null,'curta1','2468','5555')::text$q$);
+  perform t.afirma('senha fraca é recusada', r like 'ERRO:%senha%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','adm',null,'somente-letras-aqui','2468','5555')::text$q$);
+  perform t.afirma('senha sem número é recusada', r like 'ERRO:%senha%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('email-invalido','Novo Usuário','adm',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('e-mail inválido é recusado', r like 'ERRO:%e-mail%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','papelx',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('papel inválido é recusado', r like 'ERRO:%Perfil%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','super_setor',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('Super/Setor exige setor', r like 'ERRO:%setor%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','adm',null,'Senha-Forte-123','12','5555')::text$q$);
+  perform t.afirma('PIN provisório inválido é recusado', r like 'ERRO:%PIN%', r);
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('novo@x.com','Novo Usuário','adm',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('gestor cria usuário', (r::jsonb->>'ok') = 'true' and (r::jsonb->>'conta_nova') = 'true', r);
+  v_u := (r::jsonb->>'user_id')::uuid;
+  perform t.afirma('conta criada no Auth com senha em bcrypt',
+    exists (select 1 from auth.users where id = v_u and encrypted_password = extensions.crypt('Senha-Forte-123', encrypted_password) and email_confirmed_at is not null and confirmation_token = ''));
+  perform t.afirma('identidade de e-mail criada', exists (select 1 from auth.identities where user_id = v_u and provider = 'email'));
+  perform t.afirma('usuário nasce com troca de senha e PIN pendentes',
+    (select deve_trocar_senha and deve_trocar_pin and ativo and email = 'novo@x.com' from public.perfis where user_id = v_u));
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('NOVO@x.com','Outro','adm',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('e-mail duplicado (sem diferenciar maiúsculas) é recusado', r like 'ERRO:%Já existe%', r);
+  -- vincula conta já existente no Auth (criada pelo painel do Supabase)
+  insert into auth.users (email) values ('existente@x.com') returning id into v_u2;
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('existente@x.com','Conta Existente','portaria',null,null,'2468','5555')::text$q$);
+  perform t.afirma('vincula conta já existente do Auth', (r::jsonb->>'ok') = 'true' and (r::jsonb->>'conta_nova') = 'false', r);
+
+  -- ---------- primeiro acesso ----------
+  r := t.como('novo@x.com', $q$select public.confirmar_troca_senha()::text$q$);
+  perform t.afirma('não confirma troca enquanto a senha for a provisória', r like 'ERRO:%provisória%', r);
+  update auth.users set encrypted_password = extensions.crypt('Minha-Senha-Nova-9', extensions.gen_salt('bf')) where id = v_u;
+  r := t.como('novo@x.com', $q$select public.confirmar_troca_senha()::text$q$);
+  perform t.afirma('confirma troca de senha depois que ela mudou', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('flag de senha limpa', (select not deve_trocar_senha and senha_provisoria_hash is null from public.perfis where user_id = v_u));
+  r := t.como('novo@x.com', $q$select public.alterar_meu_pin('2468','2468')::text$q$);
+  perform t.afirma('novo PIN igual ao atual é recusado', r like 'ERRO:%diferente%', r);
+  r := t.como('novo@x.com', $q$select public.alterar_meu_pin('2468','1111')::text$q$);
+  perform t.afirma('PIN óbvio é recusado', r like 'ERRO:%fácil%', r);
+  r := t.como('novo@x.com', $q$select public.alterar_meu_pin('2468','1357')::text$q$);
+  perform t.afirma('troca do PIN provisório', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('flag de PIN limpa', (select not deve_trocar_pin from public.perfis where user_id = v_u));
+  r := t.como('novo@x.com', $q$select (deve_trocar_senha or deve_trocar_pin)::text from public.perfis where user_id = auth.uid()$q$);
+  perform t.afirma('usuário lê o próprio estado de primeiro acesso', r = 'false', r);
+  r := t.como('novo@x.com', $q$select senha_provisoria_hash from public.perfis$q$);
+  perform t.afirma('usuário não lê o hash da senha provisória', r like 'ERRO:%', r);
+
+  -- ---------- editar / ativar / redefinir ----------
+  r := t.como('gestor@x', format($q$select public.painel_atualizar_usuario(%L,'Novo Usuário Jurídico','super_setor',%s,'5555')::text$q$, v_u, v_jur));
+  perform t.afirma('gestor muda papel e setor', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('papel e setor atualizados', (select papel = 'super_setor' and setor_id = v_jur from public.perfis where user_id = v_u));
+  r := t.como('gestor@x', format($q$select public.painel_atualizar_usuario(%L,'Gestor','adm',null,'5555')::text$q$, (select id from auth.users where email='gestor@x')));
+  perform t.afirma('gestor não retira o próprio acesso', r like 'ERRO:%próprio%', r);
+  r := t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,false,'5555')::text$q$, (select id from auth.users where email='gestor@x')));
+  perform t.afirma('gestor não se desativa', r like 'ERRO:%próprio%', r);
+  r := t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,false,'0000')::text$q$, v_u));
+  perform t.afirma('desativar exige PIN do gestor', (r::jsonb->>'ok') = 'false', r);
+  insert into auth.sessions (user_id) values (v_u);
+  r := t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,false,'5555')::text$q$, v_u));
+  perform t.afirma('gestor desativa usuário', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('desativado: bloqueado no Auth e sem sessões',
+    (select banned_until = 'infinity' from auth.users where id = v_u) and not exists (select 1 from auth.sessions where user_id = v_u));
+  r := t.como('novo@x.com', $q$select count(*)::text from public.protocolos$q$);
+  perform t.afirma('desativado não enxerga dados', r = '0', r);
+  r := t.como('novo@x.com', $q$select public.listar_livro()::text$q$);
+  perform t.afirma('desativado não usa o sistema', r like '%"total": 0%' or r like 'ERRO:%', r);
+  r := t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,true,'5555')::text$q$, v_u));
+  perform t.afirma('gestor reativa usuário', (r::jsonb->>'ok') = 'true' and (select banned_until is null from auth.users where id = v_u), r);
+
+  r := t.como('gestor@x', format($q$select public.painel_redefinir_senha(%L,'Outra-Senha-456','5555')::text$q$, v_u));
+  perform t.afirma('gestor redefine a senha', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('senha redefinida volta a exigir troca',
+    (select deve_trocar_senha and senha_provisoria_hash = u.encrypted_password and u.encrypted_password = extensions.crypt('Outra-Senha-456', u.encrypted_password)
+       from public.perfis p join auth.users u on u.id = p.user_id where p.user_id = v_u));
+  r := t.como('gestor@x', format($q$select public.painel_redefinir_senha(%L,'fraca','5555')::text$q$, v_u));
+  perform t.afirma('redefinição respeita a política de senha', r like 'ERRO:%senha%', r);
+  r := t.como('gestor@x', format($q$select public.painel_redefinir_pin(%L,'8642','5555')::text$q$, v_u));
+  perform t.afirma('gestor redefine o PIN', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('novo@x.com', $q$select public.alterar_meu_pin('8642','9753')::text$q$);
+  perform t.afirma('PIN redefinido funciona e pode ser trocado', (r::jsonb->>'ok') = 'true', r);
+  update public.perfis set pin_bloqueado_ate = now() + interval '5 minutes', pin_falhas = 3 where user_id = v_u;
+  r := t.como('gestor@x', format($q$select public.painel_desbloquear_pin(%L)::text$q$, v_u));
+  perform t.afirma('gestor desbloqueia PIN', (select pin_bloqueado_ate is null and pin_falhas = 0 from public.perfis where user_id = v_u), r);
+
+  -- ---------- setores ----------
+  r := t.como('gestor@x', $q$select public.painel_salvar_setor(null,'Superintendência Médica')::text$q$);
+  perform t.afirma('gestor cria setor', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_setor(null,'superintendência médica')::text$q$);
+  perform t.afirma('setor duplicado é recusado', r like 'ERRO:%Já existe%', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_setor(null,'A')::text$q$);
+  perform t.afirma('nome de setor curto é recusado', r like 'ERRO:%nome%', r);
+  r := t.como('gestor@x', format($q$select public.painel_salvar_setor(%s,'Jurídico',false)::text$q$, v_jur));
+  perform t.afirma('não desativa setor com usuários ativos', r like 'ERRO:%usuários ativos%', r);
+  r := t.como('gestor@x', format($q$select public.painel_salvar_setor(%s,'Farmácia Central')::text$q$, v_far));
+  perform t.afirma('renomear setor', (r::jsonb->>'ok') = 'true' and (select nome from public.setores where id = v_far) = 'Farmácia Central', r);
+  perform public.painel_salvar_setor(v_far, 'Farmácia');   -- (como dono) volta ao nome original
+  r := t.como('gestor@x', $q$select jsonb_array_length(public.painel_listar_setores())::text$q$);
+  perform t.afirma('lista de setores', r::int >= 6, r);
+
+  -- ---------- parâmetros e feriados ----------
+  r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.painel_listar_parametros()) e where e->>'tipo' in ('numero','booleano','texto','hora','duracao')$q$);
+  perform t.afirma('parâmetros listados com tipo', r::int >= 12, r);
+  r := t.como('gestor@x', $q$select public.painel_definir_parametro('prazo_judicial_dias','10')::text$q$);
+  perform t.afirma('gestor altera parâmetro', (r::jsonb->>'alterado') = 'true' and public._param_int('prazo_judicial_dias', 0) = 10, r);
+  perform public.admin_definir_parametro('prazo_judicial_dias', '5');
+  foreach r in array array['sla_adm_min|2min','sla_adm_min|abc','expediente_inicio|25:00','prazo_judicial_dias|400','prazo_judicial_dias|abc','expediente_fim|7','expediente_inicio|18','gestor_ignora_segregacao|talvez','url_sistema|http://x.com','chave_inexistente|1'] loop
+    perform t.afirma('parâmetro inválido recusado: ' || r,
+      t.como('gestor@x', format($q$select public.painel_definir_parametro(%L,%L)::text$q$, split_part(r,'|',1), split_part(r,'|',2))) like 'ERRO:%');
+  end loop;
+  r := t.como('adm@x', $q$select public.painel_definir_parametro('sla_adm_min','8h')::text$q$);
+  perform t.afirma('ADM não altera parâmetros', r like 'ERRO:%gestor%', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_feriado('2027-02-09','Carnaval')::text$q$);
+  perform t.afirma('gestor cadastra feriado', (r::jsonb->>'ok') = 'true' and public._eh_util('2027-02-09') = false, r);
+  r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.painel_listar_feriados()) e where e->>'data' = '2027-02-09'$q$);
+  perform t.afirma('feriado listado', r = '1', r);
+  r := t.como('gestor@x', $q$select public.painel_remover_feriado('2027-02-09')::text$q$);
+  perform t.afirma('gestor remove feriado', (r::jsonb->>'ok') = 'true' and public._eh_util('2027-02-09'), r);
+  r := t.como('gestor@x', $q$select public.painel_remover_feriado('2027-02-09')::text$q$);
+  perform t.afirma('remover feriado inexistente é recusado', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select (public.painel_resumo()->>'usuarios_ativos')::int > 5 and (public.painel_resumo() ? 'email_pendente')$q$);
+  perform t.afirma('resumo do painel', r = 'true', r);
+
+  -- ---------- trilha organizada ----------
+  r := t.como('gestor@x', $q$select (public.listar_auditoria()->>'total')::int > 20$q$);
+  perform t.afirma('trilha lista eventos', r = 'true', r);
+  r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.listar_auditoria(null,'protocolo')->'itens') e where e->>'acao' <> 'PROTOCOLO_CRIADO' or e->>'numero' is null$q$);
+  perform t.afirma('filtro por categoria e nº do protocolo no evento', r = '0', r);
+  r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.listar_auditoria(null,'administracao')->'itens') e where e->>'categoria' <> 'administracao'$q$);
+  perform t.afirma('categoria administração', r = '0', r);
+  r := t.como('gestor@x', $q$select (public.listar_auditoria('USUARIO_CRIADO')->>'total')::int >= 2$q$);
+  perform t.afirma('busca por ação', r = 'true', r);
+  r := t.como('gestor@x', $q$select (public.listar_auditoria(null,null,'Paula Gestora')->>'total')::int > 0$q$);
+  perform t.afirma('filtro por usuário', r = 'true', r);
+  r := t.como('gestor@x', $q$select (public.listar_auditoria('%')->>'total')::int$q$);
+  perform t.afirma('curinga % tratado como texto na trilha', r::int = 0, r);
+  r := t.como('gestor@x', $q$select jsonb_array_length(public.listar_auditoria(null,null,null,null,null,5,0)->'itens')::text$q$);
+  perform t.afirma('paginação da trilha', r = '5', r);
+  r := t.como('gestor@x', $q$select (public.listar_auditoria(null,null,null,current_date + 1,null)->>'total')$q$);
+  perform t.afirma('filtro por data', r = '0', r);
+  r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.listar_auditoria()->'itens') e where e ? 'hash' or e ? 'hash_anterior'$q$);
+  perform t.afirma('trilha não expõe os hashes internos', r = '0', r);
+  r := t.como('gestor@x', format($q$select public.registrar_exportacao('FICHA',%s,'')$q$, v_id));
+  r := (select detalhes::text from public.auditoria where acao = 'IMPRESSAO_FICHA' order by id desc limit 1);
+  perform t.afirma('impressão da ficha registra o nº (sem filtros vazios)', r like '%"numero"%' and r not like '%filtros%', r);
+  r := t.como('gestor@x', $q$select public.registrar_exportacao('TRILHA',null,'categoria: acesso')$q$);
+  perform t.afirma('gestor registra exportação da trilha', not exists (select 1 from public.auditoria where acao = 'IMPRESSAO_TRILHA' and detalhes->>'filtros' is null), r);
+  r := t.como('adm@x', $q$select public.registrar_exportacao('TRILHA')::text$q$);
+  perform t.afirma('ADM não exporta a trilha', r like 'ERRO:%gestor%', r);
+end $$;
+
+
+-- ---------- v4: formatos de hora, salvar único, logo, exclusões ----------
+do $$
+declare r text; v_id bigint; v_id2 bigint; v_n int; v_jur bigint := (select id from public.setores where nome='Jurídico');
+        v_png text := 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+begin
+  perform t.afirma('cadeia íntegra antes das exclusões', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+  perform t.afirma('formatos de hora', public._parse_hhmm('8h30') = '08:30' and public._parse_hhmm('17') = '17:00'
+     and public._parse_hhmm('7:05') = '07:05' and public._parse_hhmm('25:00') is null and public._parse_hhmm('8:75') is null);
+  perform t.afirma('formatos de duração', public._parse_duracao_min('1h30') = 90 and public._parse_duracao_min('90min') = 90
+     and public._parse_duracao_min('1,5') = 90 and public._parse_duracao_min('2h') = 120 and public._parse_duracao_min('1:30') = 90
+     and public._parse_duracao_min('1d') = 540 and public._parse_duracao_min('4 horas 15 min') = 255 and public._parse_duracao_min('abc') is null,
+     coalesce(public._parse_duracao_min('1d')::text, 'nulo'));
+  perform t.afirma('parâmetros antigos migrados', not exists (select 1 from public.parametros where chave like 'sla\_%\_horas')
+     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:00'
+     and (select valor from public.parametros where chave = 'expediente_inicio') = '08:00');
+
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"3h","expediente_fim":"7:00"}'::jsonb)::text$q$);
+  perform t.afirma('salvar em lote é tudo-ou-nada (expediente incoerente)', r like 'ERRO:%expediente%'
+     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:00', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"xx"}'::jsonb)::text$q$);
+  perform t.afirma('salvar em lote nomeia o campo inválido', r like 'ERRO:%sla_adm_min%', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"4h30","expediente_inicio":"7h30","alerta_prazo_dias":"3","foto_obrigatoria_judicial":"true"}'::jsonb)::text$q$);
+  perform t.afirma('salvar vários parâmetros de uma vez', (r::jsonb->>'alterados') = '3'
+     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:30'
+     and (select valor from public.parametros where chave = 'expediente_inicio') = '07:30', r);
+  perform t.afirma('um único evento de auditoria para o lote', (select count(*) from public.auditoria where acao = 'PARAMETROS_ALTERADOS') = 1);
+  r := t.como('adm@x', $q$select public.painel_salvar_parametros('{"alerta_prazo_dias":"1"}'::jsonb)::text$q$);
+  perform t.afirma('ADM não salva parâmetros', r like 'ERRO:%gestor%', r);
+  perform public.admin_definir_parametro('sla_adm_min', '4:00'); perform public.admin_definir_parametro('expediente_inicio', '08:00');
+  perform public.admin_definir_parametro('alerta_prazo_dias', '2');
+  perform t.afirma('horas úteis seguem funcionando', public._somar_horas_uteis(now(), 1.5) > now());
+
+  -- logo
+  r := t.como('gestor@x', $q$select public.painel_definir_logo('data:text/html;base64,PHNjcmlwdD4=','5555')::text$q$);
+  perform t.afirma('logo que não é imagem é recusado', r like 'ERRO:%inválida%', r);
+  r := t.como('gestor@x', format($q$select public.painel_definir_logo(%L,'0000')::text$q$, v_png));
+  perform t.afirma('logo exige o PIN do gestor', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('adm@x', format($q$select public.painel_definir_logo(%L,'2222')::text$q$, v_png));
+  perform t.afirma('ADM não altera o logo', r like 'ERRO:%gestor%', r);
+  r := t.como('gestor@x', format($q$select public.painel_definir_logo(%L,'5555')::text$q$, v_png));
+  perform t.afirma('gestor define o logo', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('anon', $q$select public.identidade_publica()->>'logo'$q$);
+  perform t.afirma('logo é lido já na tela de login', r = v_png, left(coalesce(r, 'nulo'), 60));
+  perform t.afirma('auditoria do logo não guarda a imagem', exists (select 1 from public.auditoria where acao = 'LOGO_ALTERADO')
+     and not exists (select 1 from public.auditoria where detalhes::text like '%iVBOR%'));
+  r := t.como('anon', $q$select count(*)::text from public.identidade$q$);
+  perform t.afirma('tabela da identidade fechada ao cliente', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.painel_remover_logo('5555')::text$q$);
+  perform t.afirma('gestor restaura o logo padrão', (r::jsonb->>'ok') = 'true' and (select logo from public.identidade) is null, r);
+
+  -- exclusão de protocolo
+  r := t.como('gestor@x', $q$select (public.registrar_protocolo('Documento a excluir (teste)','5555',null,'correspondencia')->>'id')$q$);
+  v_id := r::bigint;
+  perform t.como('gestor@x', format($q$select public.confirmar_etapa(%s,2,'5555',null,%s)::text$q$, v_id, v_jur));
+  r := t.como('adm@x', format($q$select public.excluir_protocolo(%s,'Cadastro em duplicidade','2222')::text$q$, v_id));
+  perform t.afirma('ADM não exclui protocolo', r like 'ERRO:%gestor%', r);
+  r := t.como('gestor@x', format($q$select public.excluir_protocolo(%s,'curto','5555')::text$q$, v_id));
+  perform t.afirma('exclusão exige justificativa', r like 'ERRO:%justificativa%', r);
+  r := t.como('gestor@x', format($q$select public.excluir_protocolo(%s,'Cadastro em duplicidade','0000')::text$q$, v_id));
+  perform t.afirma('exclusão exige o PIN do gestor', (r::jsonb->>'ok') = 'false' and exists (select 1 from public.protocolos where id = v_id), r);
+  r := t.como('gestor@x', 'select public.excluir_protocolo(999999,''Cadastro em duplicidade'',''5555'')::text');
+  perform t.afirma('protocolo inexistente', r like 'ERRO:%não encontrado%', r);
+  r := t.como('gestor@x', format($q$select public.excluir_protocolo(%s,'Cadastro em duplicidade','5555')::text$q$, v_id));
+  perform t.afirma('gestor exclui protocolo com etapas', (r::jsonb->>'ok') = 'true' and not exists (select 1 from public.protocolos where id = v_id)
+     and not exists (select 1 from public.tramites where protocolo_id = v_id), r);
+  perform t.afirma('exclusão fica na trilha e a cadeia continua íntegra', exists (select 1 from public.auditoria where acao = 'PROTOCOLO_EXCLUIDO' and protocolo_id = v_id
+     and detalhes->>'justificativa' = 'Cadastro em duplicidade'),
+     (select string_agg(acao||':'||coalesce(protocolo_id::text,'-'),',') from (select * from public.auditoria order by id desc limit 4) z));
+  perform t.afirma('cadeia íntegra depois da exclusão', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true',
+     t.como('gestor@x', 'select public.verificar_auditoria()::text') || (select string_agg(id||':'||acao, ',' order by id) from public.auditoria));
+  perform t.afirma('eventos antigos do protocolo excluído permanecem', exists (select 1 from public.auditoria where acao = 'PROTOCOLO_CRIADO' and protocolo_id = v_id));
+
+  r := t.como('gestor@x', $q$select (public.registrar_protocolo('Segundo documento a excluir','5555',null,'correspondencia')->>'id')$q$);
+  v_id2 := r::bigint;
+  r := t.como('gestor@x', format($q$select public.excluir_protocolo(%s,'Registro feito por engano','5555',true)::text$q$, v_id2));
+  perform t.afirma('exclusão com remoção da trilha do protocolo', (r::jsonb->>'trilha_removida')::int >= 1
+     and not exists (select 1 from public.auditoria where protocolo_id = v_id2 and acao <> 'PROTOCOLO_EXCLUIDO'), r);
+  perform t.afirma('cadeia íntegra após remover trilha do protocolo', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+
+  -- os demais caminhos continuam imutáveis
+  begin delete from public.auditoria; perform t.afirma('delete direto na auditoria continua bloqueado', false);
+  exception when others then perform t.afirma('delete direto na auditoria continua bloqueado', sqlerrm like '%imutável%', sqlerrm); end;
+  begin delete from public.tramites; perform t.afirma('delete direto nas etapas continua bloqueado', false);
+  exception when others then perform t.afirma('delete direto nas etapas continua bloqueado', sqlerrm like '%imutável%', sqlerrm); end;
+  r := t.como('gestor@x', 'delete from public.protocolos');
+  perform t.afirma('cliente não apaga protocolos direto', r like 'ERRO:%', r);
+
+  -- limpar trilha
+  r := t.como('adm@x', $q$select public.limpar_trilha('tudo',null,null,'Limpeza geral de testes','2222')::text$q$);
+  perform t.afirma('ADM não limpa a trilha', r like 'ERRO:%gestor%', r);
+  r := t.como('gestor@x', $q$select public.limpar_trilha('semana',null,null,'Limpeza geral de testes','5555')::text$q$);
+  perform t.afirma('modo inválido é recusado', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.limpar_trilha('periodo',null,null,'Limpeza geral de testes','5555')::text$q$);
+  perform t.afirma('período exige as duas datas', r like 'ERRO:%data%', r);
+  r := t.como('gestor@x', $q$select public.limpar_trilha('periodo','2020-01-01','2020-12-31','Limpeza de dados antigos','5555')::text$q$);
+  perform t.afirma('período sem eventos não remove nada', (r::jsonb->>'removidos') = '0', r);
+  select count(*) into v_n from public.auditoria;
+  r := t.como('gestor@x', $q$select public.limpar_trilha('periodo',(now() - interval '1 day')::date,(now() + interval '1 day')::date,'Limpeza de dados de teste','5555')::text$q$);
+  perform t.afirma('gestor limpa a trilha por período', (r::jsonb->>'removidos')::int = v_n, r || ' / ' || v_n);
+  perform t.afirma('sobra só o registro da exclusão, com cadeia íntegra', (select count(*) from public.auditoria) = 1
+     and (select acao from public.auditoria) = 'TRILHA_EXCLUIDA'
+     and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+  r := t.como('gestor@x', $q$select public.limpar_trilha('tudo',null,null,'Reinício da trilha de testes','5555')::text$q$);
+  perform t.afirma('gestor limpa toda a trilha e o ato é registrado', (r::jsonb->>'removidos') = '1'
+     and (select count(*) from public.auditoria) = 1 and (select detalhes->>'modo' from public.auditoria) = 'tudo', r);
+  r := t.como('gestor@x', $q$select public.registrar_exportacao('TRILHA')::text$q$);
+  perform t.afirma('trilha segue gravando depois da limpeza', (select count(*) from public.auditoria) = 2
+     and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true', r);
+end $$;
+
+-- 7b. melhorias (05): versão do schema, backup, retenção
+do $$
+declare r text;
+begin
+  perform t.afirma('schema_versao registra os 5 arquivos', (select count(*) from public.schema_versao) = 5 and public.versao_schema() = 5);
+  perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
+  update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
+  perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
+     public._semaforo(current_date + 4, 'pendente_adm') = 'critico' and public._semaforo(current_date + 5, 'pendente_adm') = 'atencao'
+     and (public.resumo_livro()->>'alerta_dias') = '4');
+  perform t.afirma('usuário comum lê o resumo e o semáforo (sem permissão direta ao parâmetro)',
+     t.como('far@x', 'select (public.resumo_livro()->>''alerta_dias'')') = '4' and t.como('far@x', 'select count(*) >= 0 from public.v_livro') = 'true');
+  update public.parametros set valor = '2' where chave = 'alerta_prazo_dias';
+  perform t.afirma('semáforo volta ao padrão de 2 dias', public._semaforo(current_date + 3, 'pendente_adm') = 'atencao');
+  r := t.como('far@x', $q$select public.exportar_backup()::text$q$);
+  perform t.afirma('backup é negado a quem não é gestor', r like 'ERRO:%', r);
+  r := t.como('far@x', $q$select public.retencao_resumo(60)::text$q$);
+  perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
+  perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
+     and (r::jsonb->>'versao_schema') = '5', left(r, 120));
+  perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
+  perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
+     and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+  r := t.como('gestor@x', $q$select public.retencao_resumo(0)::text$q$);
+  perform t.afirma('prazo de guarda inválido é recusado', r like 'ERRO:%', r);
+  r := t.como('gestor@x', $q$select public.retencao_resumo(1)::text$q$);
+  perform t.afirma('resumo de retenção devolve contagens', (r::jsonb ? 'protocolos') and (r::jsonb ? 'fotos'), r);
+end $$;
+
+-- 8. bloqueio de PIN (transações separadas: as falhas precisam ser gravadas)
+do $$
+declare r text; i int;
+begin
+  for i in 1..5 loop
+    r := t.como('far@x', $q$select public.alterar_meu_pin('0000','4321')::text$q$);
+  end loop;
+  r := t.como('far@x', $q$select public.alterar_meu_pin('4444','7351')::text$q$);
+  perform t.afirma('após 5 erros o PIN fica bloqueado (mesmo com PIN certo)', r like '%bloqueado%', r);
+  perform public.admin_desbloquear_pin('far@x');
+  r := t.como('far@x', $q$select public.alterar_meu_pin('4444','43')::text$q$);
+  perform t.afirma('novo PIN inválido é recusado', r like 'ERRO:%', r);
+  r := t.como('far@x', $q$select public.alterar_meu_pin('4444','7351')::text$q$);
+  perform t.afirma('troca de PIN após desbloqueio', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('far@x', $q$select public.alterar_meu_pin('7351','4455')::text$q$);
+  perform t.afirma('PIN novo funciona', (r::jsonb->>'ok') = 'true', r);
+end $$;
+\echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='

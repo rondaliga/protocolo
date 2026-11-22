@@ -1,0 +1,4 @@
+Flask>=3.0
+reportlab>=4.0
+# Produção (opcional): servidor WSGI mais robusto que o de desenvolvimento
+# waitress>=3.0

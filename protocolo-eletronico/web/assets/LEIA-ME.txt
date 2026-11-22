@@ -1,0 +1,2 @@
+Coloque aqui o logotipo da instituição como **logo.png** (fundo transparente, ~400 px de largura).
+Ele aparece automaticamente no login, no topo e nas impressões. Sem o arquivo, o sistema usa um ícone de cruz.
