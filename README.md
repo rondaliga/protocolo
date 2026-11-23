@@ -198,7 +198,8 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
 - **Usuários**: criar (e-mail, nome, papel, setor; senha e PIN provisórios gerados na tela), editar, **desativar/reativar**
   (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
   Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
-- Duas abas: **Usuários** e **Sistema**. A aba **Sistema** reúne, em sequência e com um índice "Ir para": Prazos e regras (parâmetros validados), Setores, Feriados (contam no cálculo de horas úteis), Identidade visual, Backup e retenção e Uso do sistema.
+- Quatro abas: **Usuários**; **Sistema** (Identidade visual, Prazos e regras com parâmetros validados e Uso do sistema, com um índice "Ir para"); **Setores e feriados** (os feriados contam no cálculo de horas úteis); e **Backup e retenção**.
+- **Tema claro e escuro:** menu *Minha conta → Tema* (Automático segue o sistema operacional, Claro ou Escuro). A escolha fica só no navegador de cada pessoa. Impressões e PDF saem sempre em fundo branco.
 - Tudo é gravado na trilha de auditoria.
 
 **Primeiro acesso**: o usuário entra com a senha provisória e é obrigado a definir a **própria senha** (10–72 caracteres, com letra
@@ -325,7 +326,7 @@ pg_restore --no-owner --clean --if-exists --dbname "$SUPABASE_DB_URL" backup.dum
 O botão "Baixar backup (JSON)" do painel continua útil para uma cópia imediata.
 
 ### Verificação em duas etapas (TOTP) — recomendada ao gestor
-- Qualquer usuário pode ativar em **2 etapas** (botão no topo): escaneia o QR Code num aplicativo autenticador (Google/Microsoft Authenticator, Authy, 2FAS…) e confirma com o primeiro código. Depois, todo login pede a senha **e** o código.
+- Qualquer usuário pode ativar em **2 etapas** (menu **Minha conta → Verificação em duas etapas**): escaneia o QR Code num aplicativo autenticador (Google/Microsoft Authenticator, Authy, 2FAS…) e confirma com o primeiro código. Depois, todo login pede a senha **e** o código.
 - **Exigência para o gestor:** Painel → Sistema → Prazos e regras → *Regras gerais* → "Exigir verificação em duas etapas…". Ao ligar, cada gestor é obrigado a cadastrar no próximo acesso (e não consegue desativar).
 - **Proteção no servidor, não só na tela:** quem tem o fator ativo e ainda não digitou o código (sessão `aal1`) é tratado como não autenticado pelo banco — a função `public._uid()` (que substitui `auth.uid()` em todas as políticas e funções) devolve vazio. Mesmo chamando a API direto com a senha, nada é lido nem alterado. O teste automatizado prova isso.
 - Cadastro, QR e conferência do código são do **Supabase Auth (MFA/TOTP)**: nenhum segredo passa pelo nosso código. No painel do Supabase, confira *Authentication → Sign In / Providers → Multi-Factor Authentication* com **TOTP** ativado (padrão).

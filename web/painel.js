@@ -245,7 +245,7 @@
 
     // ================================================================== PAINEL DE CONTROLE
     const painel = { sub: 'usuarios', usuarios: [], setores: [] };
-    const SUBS = ['usuarios', 'sistema'];
+    const SUBS = ['usuarios', 'sistema', 'cadastros', 'backup'];
 
     function abrirPainel() { trocarSub(painel.sub); }
     function trocarSub(n) {
@@ -253,7 +253,9 @@
       $$('.subaba').forEach((b) => b.classList.toggle('ativa', b.dataset.sub === n));
       SUBS.forEach((s) => { $(`#sub-${s}`).hidden = s !== n; });
       if (n === 'usuarios') carregarUsuarios();
-      else { carregarParametros(); carregarSetores(); carregarFeriados(); carregarSistema(); }
+      else if (n === 'sistema') { carregarParametros(); carregarSistema(); }
+      else if (n === 'cadastros') { carregarSetores(); carregarFeriados(); }
+      else carregarBackup();
     }
     const falha = (e) => toast(e.message, true);
     const pl = (n, um, varios) => `${n} ${Number(n) === 1 ? um : varios}`;
@@ -512,11 +514,13 @@
     }
 
     // ---------- sistema
+    function carregarBackup() {
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 8${v < 8 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+    }
     async function carregarSistema() {
       try {
         logoEst.novo = null; $('#logo-salvar').disabled = true; $('#logo-pin').value = ''; mostrarLogoPrevia(LP.estado().logoSrc);
         const r = await rpc('painel_resumo');
-        rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 8${v < 8 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
         const k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
         $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
           + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')

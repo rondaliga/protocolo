@@ -45,6 +45,10 @@ def assinar(page, form):
     page.mouse.up()
 
 
+def abrir_item_conta(page, seletor):
+    page.click("#btn-conta"); page.locator("#menu-conta").wait_for(state="visible"); page.click(seletor)
+
+
 def sair(page):
     page.click("#btn-sair"); page.locator("#view-login").wait_for(state="visible")
 
@@ -198,7 +202,7 @@ try:
         assert page.locator("#print-root.livro table.p-tab thead tr").count() == 2 and page.locator("#print-root.livro thead th[colspan=\"2\"]").count() == 3
         pdf_da_impressao(page, "livro.pdf", True)
         # alterar PIN
-        page.click("#btn-pin"); page.fill("#form-pin input[name=atual]", "5555"); page.fill("#form-pin input[name=novo]", "5556")
+        abrir_item_conta(page, "#btn-pin"); page.fill("#form-pin input[name=atual]", "5555"); page.fill("#form-pin input[name=novo]", "5556")
         page.click("#form-pin button[type=submit]"); esperar_toast(page, "PIN alterado"); page.wait_for_timeout(300)
         # auditoria
         page.click("#btn-aba-auditoria"); page.click("#btn-verificar"); page.locator("#resultado-verificacao:not(:empty)").wait_for()
@@ -263,14 +267,14 @@ try:
         assert "Primeiro acesso pendente" in page.inner_text("#tbody-usr tr:has-text('Rita Nova')")
         page.select_option("#usr-filtro-papel", "adm"); assert page.locator("#tbody-usr tr").count() == 2; page.select_option("#usr-filtro-papel", "")
         # setor, regras e feriado
-        page.click("[data-sub=sistema]"); page.click("#set-novo"); page.fill("#form-setor input[name=nome]", "Superintendência Teste")
+        page.click("[data-sub=cadastros]"); page.click("#set-novo"); page.fill("#form-setor input[name=nome]", "Superintendência Teste")
         page.click("#form-setor button[type=submit]"); esperar_toast(page, "Setor salvo"); page.wait_for_timeout(400)
         assert "Superintendência Teste" in page.inner_text("#tbody-set")
         page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
-        page.click("[data-sub=sistema]"); page.fill("#form-feriado input[name=data]", "2027-02-09"); page.fill("#form-feriado input[name=descricao]", "Carnaval")
+        page.click("[data-sub=cadastros]"); page.fill("#form-feriado input[name=data]", "2027-02-09"); page.fill("#form-feriado input[name=descricao]", "Carnaval")
         page.click("#form-feriado button[type=submit]"); esperar_toast(page, "Feriado cadastrado"); page.wait_for_timeout(400)
         assert "Carnaval" in page.inner_text("#tbody-fer"); page.click("#tbody-fer button"); page.wait_for_timeout(500)
-        page.click("[data-sub=sistema]"); page.click("[data-ir=sis-feriados]"); page.locator("#sistema-kpis .kpi").first.wait_for(); assert "usuários ativos" in page.inner_text("#sistema-kpis").lower()
+        page.click("[data-sub=sistema]"); page.click("[data-ir=sis-uso]"); page.locator("#sistema-kpis .kpi").first.wait_for(); assert "usuários ativos" in page.inner_text("#sistema-kpis").lower()
         page.screenshot(path=str(OUT / "8c_painel_sistema.png"))
         sair(page)
 
@@ -457,7 +461,7 @@ try:
         page.click("#btn-aba-auditoria"); page.locator("#resultado-verificacao:not(:empty)").wait_for(timeout=8000)
         assert "íntegra" in page.inner_text("#resultado-verificacao"), page.inner_text("#resultado-verificacao")
         print("selo automático:", page.inner_text("#resultado-verificacao"))
-        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]")
+        page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
         assert "8 de 8" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
@@ -513,10 +517,10 @@ try:
             pg.fill("input[name=email]", "gestor@teste.local"); pg.fill("input[name=senha]", SENHA)
             pg.click("#form-login button[type=submit]"); pg.locator("#dlg-mfa").wait_for(state="visible", timeout=8000)
         login(page, "gestor")
-        page.click("#btn-mfa"); seg = cadastrar_mfa(page); esperar_toast(page, "ativada")
+        abrir_item_conta(page, "#btn-mfa"); seg = cadastrar_mfa(page); esperar_toast(page, "ativada")
         assert psql("select count(*) from auth.mfa_factors where status='verified'") == "1"
         page.wait_for_timeout(500); assert psql("select count(*) from public.auditoria where acao='MFA_ATIVADO'") == "1"
-        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_visible()
+        abrir_item_conta(page, "#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_visible()
         page.click("#mfa-cad-fechar"); sair(page)
         entrar_ate_codigo(page)
         sondagem = page.evaluate("""async () => {
@@ -544,7 +548,7 @@ try:
         linha.locator("[data-uacao=mfa]").click(); page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
         esperar_toast(page, "redefinida"); assert psql("select count(*) from auth.mfa_factors where user_id=(select id from auth.users where email='portaria@teste.local')") == "0"
         # exigência para o gestor: desativa a própria, liga a regra, o próximo acesso obriga o cadastro
-        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible")
+        abrir_item_conta(page, "#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible")
         page.once("dialog", lambda d: d.accept()); page.click("#mfa-desativar"); esperar_toast(page, "desativada")
         assert psql("select count(*) from auth.mfa_factors") == "0"
         page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#form-param input[name=mfa_gestor_obrigatorio]").wait_for(); page.wait_for_timeout(900)
@@ -556,7 +560,7 @@ try:
         assert page.inner_text("#mfa-cad-fechar") == "Sair" and "precisa usar" in page.inner_text("#mfa-cad-info")
         assert page.locator("#view-app").is_hidden(), "sem cadastro o gestor não entra"
         seg = cadastrar_mfa(page); page.locator("#view-app").wait_for(state="visible", timeout=8000); page.wait_for_timeout(500)
-        page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_hidden(), "exigida: não pode desativar"
+        abrir_item_conta(page, "#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible"); assert page.locator("#mfa-desativar").is_hidden(), "exigida: não pode desativar"
         page.click("#mfa-cad-fechar")
         # limpeza: volta ao estado sem exigência para o restante da bateria
         psql("update public.parametros set valor='false' where chave='mfa_gestor_obrigatorio'"); psql("delete from auth.mfa_factors")
@@ -613,6 +617,28 @@ try:
         page.screenshot(path=str(OUT / "9c_reencaminhado.png")); page.click("#detalhe-corpo [data-fechar]"); sair(page)
         login(page, "farmacia"); page.locator("#tbody tr:has-text('2026-9001')").wait_for(); sair(page)
         assert psql("select count(*) from public.movimentacoes") == "2"
+        login(page, "gestor")
+        # tema claro/escuro (Automático → Claro → Escuro), lembrado no navegador
+        fundo = lambda: page.evaluate("getComputedStyle(document.body).backgroundColor")
+        abrir_item_conta(page, "#menu-conta [data-tema-btn]")
+        assert page.evaluate("document.documentElement.dataset.tema") == "claro" and "Claro" in page.inner_text("#menu-conta [data-tema-btn]")
+        claro = fundo(); page.click("#menu-conta [data-tema-btn]")
+        assert page.evaluate("document.documentElement.dataset.tema") == "escuro" and fundo() != claro
+        assert page.evaluate("localStorage.getItem('tema')") == "escuro"
+        page.keyboard.press("Escape"); page.wait_for_timeout(200); assert page.locator("#menu-conta").is_hidden()
+        page.screenshot(path=str(OUT / "10a_escuro_lista.png"))
+        page.locator("#tbody tr[data-id]").first.click(); page.locator("#dlg-detalhe[open]").wait_for(); page.wait_for_timeout(400)
+        page.screenshot(path=str(OUT / "10b_escuro_detalhe.png")); page.keyboard.press("Escape")
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.wait_for_timeout(900); page.screenshot(path=str(OUT / "10c_escuro_sistema.png"), full_page=True)
+        page.click("[data-sub=cadastros]"); page.wait_for_timeout(500); page.screenshot(path=str(OUT / "10d_escuro_cadastros.png"))
+        page.click("[data-sub=backup]"); page.wait_for_timeout(500); page.screenshot(path=str(OUT / "10e_escuro_backup.png"))
+        page.click("[data-sub=usuarios]"); page.wait_for_timeout(500); page.screenshot(path=str(OUT / "10f_escuro_usuarios.png"))
+        page.click("#btn-aba-livro") if page.locator("#btn-aba-livro").count() else None
+        sair(page); page.goto(URL); page.locator("#view-login").wait_for(state="visible"); page.wait_for_timeout(500)
+        assert page.evaluate("document.documentElement.dataset.tema") == "escuro", "tema deve persistir após recarregar"
+        page.screenshot(path=str(OUT / "10g_escuro_login.png"))
+        page.click(".tema-login"); assert page.evaluate("document.documentElement.dataset.tema") is None and "Automático" in page.inner_text(".tema-login")
+        page.evaluate("localStorage.setItem('tema','claro')"); page.reload(); page.locator("#view-login").wait_for(state="visible")
         login(page, "gestor")
         # layout móvel
         page.set_viewport_size({"width": 390, "height": 800}); page.click("[data-aba=protocolos]"); page.wait_for_timeout(300)

@@ -1107,6 +1107,21 @@
     });
     document.addEventListener('pointerdown', iniciarAudio, { once: true });
 
+    // menu "Minha conta"
+    const menuConta = $('#menu-conta'), btnConta = $('#btn-conta');
+    const fecharMenuConta = (foco) => { menuConta.hidden = true; btnConta.setAttribute('aria-expanded', 'false'); if (foco) btnConta.focus(); };
+    btnConta.addEventListener('click', (ev) => {
+      ev.stopPropagation(); const abrir = menuConta.hidden; menuConta.hidden = !abrir; btnConta.setAttribute('aria-expanded', String(abrir));
+      if (abrir) menuConta.querySelector('button').focus();
+    });
+    menuConta.addEventListener('click', (ev) => { if (ev.target.closest('button') && !ev.target.closest('[data-tema-btn]')) fecharMenuConta(false); });
+    menuConta.addEventListener('keydown', (ev) => {
+      const itens = [...menuConta.querySelectorAll('button')], i = itens.indexOf(document.activeElement);
+      if (ev.key === 'Escape') { ev.preventDefault(); fecharMenuConta(true); }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); itens[(i + 1) % itens.length].focus(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); itens[(i - 1 + itens.length) % itens.length].focus(); }
+    });
+    document.addEventListener('click', (ev) => { if (!menuConta.hidden && !ev.target.closest('.conta-wrap')) fecharMenuConta(false); });
     $('#btn-senha').addEventListener('click', () => abrirConta(false));
     ligarMfaLogin(); ligarMfaCadastro();
     $('#btn-mfa').addEventListener('click', () => { abrirCadastroMfa(false).catch(() => {}); });

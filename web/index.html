@@ -13,6 +13,7 @@
   <link rel="icon" href="data:,">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
+  <script src="tema.js"></script>
 </head>
 <body>
 
@@ -27,6 +28,7 @@
 
 <!-- ============ LOGIN ============ -->
 <section id="view-login" class="centro" hidden>
+  <button class="btn mini sec tema-login btn-tema" type="button" data-tema-btn>Tema: Automático</button>
   <form id="form-login" class="cartao-login" autocomplete="on">
     <div class="marca marca-grande"><img class="logo" alt="" hidden><span class="cruz" aria-hidden="true">+</span></div>
     <h1>Livro de Protocolo</h1>
@@ -67,9 +69,16 @@
           </div>
         </div>
       </div>
-      <button class="btn mini" id="btn-senha" type="button">Alterar senha</button>
-      <button class="btn mini" id="btn-pin" type="button">Alterar PIN</button>
-      <button class="btn mini" id="btn-mfa" type="button" title="Verificação em duas etapas">2 etapas</button>
+      <div class="sino-wrap conta-wrap">
+        <button class="btn mini" id="btn-conta" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu-conta">Minha conta <span aria-hidden="true">▾</span></button>
+        <div class="menu-conta" id="menu-conta" role="menu" aria-label="Minha conta" hidden>
+          <button type="button" role="menuitem" id="btn-senha">Alterar senha</button>
+          <button type="button" role="menuitem" id="btn-pin">Alterar PIN</button>
+          <button type="button" role="menuitem" id="btn-mfa">Verificação em duas etapas</button>
+          <hr>
+          <button type="button" role="menuitem" class="btn-tema" data-tema-btn>Tema: Automático</button>
+        </div>
+      </div>
       <button class="btn mini" id="btn-sair" type="button">Sair</button>
     </div>
   </header>
@@ -220,6 +229,8 @@
       <nav class="subabas" id="subabas" aria-label="Painel de controle">
         <button type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
         <button type="button" class="subaba" data-sub="sistema">Sistema</button>
+        <button type="button" class="subaba" data-sub="cadastros">Setores e feriados</button>
+        <button type="button" class="subaba" data-sub="backup">Backup e retenção</button>
       </nav>
 
       <div id="sub-usuarios" class="sub">
@@ -249,13 +260,32 @@
       <div id="sub-sistema" class="sub" hidden>
         <nav class="sis-indice" id="sis-indice" aria-label="Seções do sistema">
           <span>Ir para:</span>
-          <button type="button" data-ir="sis-parametros">Prazos e regras</button>
-          <button type="button" data-ir="sis-setores">Setores</button>
-          <button type="button" data-ir="sis-feriados">Feriados</button>
           <button type="button" data-ir="sis-identidade">Identidade visual</button>
-          <button type="button" data-ir="sis-dados">Backup e retenção</button>
+          <button type="button" data-ir="sis-parametros">Prazos e regras</button>
           <button type="button" data-ir="sis-uso">Uso do sistema</button>
         </nav>
+        <section class="sis-sec" id="sis-identidade" aria-labelledby="sis-identidade-t">
+          <h2 id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
+        <form id="form-logo" class="cartao-cfg sem-titulo" autocomplete="off">
+                    <div class="logo-cfg">
+            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true">+</span></div>
+            <div class="logo-controles">
+              <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
+                Aceita PNG, JPEG ou WebP; a imagem é reduzida automaticamente. Prefira fundo transparente ou branco.</p>
+              <input type="file" id="logo-arquivo" accept="image/png,image/jpeg,image/webp" hidden>
+              <div class="logo-linha">
+                <button type="button" class="btn sec" id="logo-escolher">Escolher imagem…</button>
+                <label class="logo-pin">PIN do gestor
+                  <input class="pin" id="logo-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off">
+                </label>
+                <button type="submit" class="btn primario" id="logo-salvar" disabled>Salvar logotipo</button>
+                <button type="button" class="btn sec" id="logo-restaurar">Restaurar padrão</button>
+              </div>
+              <p class="erro" role="alert" hidden></p>
+            </div>
+          </div>
+        </form>
+        </section>
         <section class="sis-sec" id="sis-parametros" aria-labelledby="sis-parametros-t">
           <h2 id="sis-parametros-t" tabindex="-1">Prazos e regras</h2>
         <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
@@ -269,6 +299,13 @@
           </div>
         </form>
         </section>
+        <section class="sis-sec" id="sis-uso" aria-labelledby="sis-uso-t">
+          <h2 id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
+        <div class="kpis" id="sistema-kpis"></div>
+        <p class="dica" id="sistema-aviso"></p>
+        </section>
+      </div>
+      <div id="sub-cadastros" class="sub" hidden>
         <section class="sis-sec" id="sis-setores" aria-labelledby="sis-setores-t">
           <h2 id="sis-setores-t" tabindex="-1">Setores</h2>
         <div class="barra"><button class="btn primario" type="button" id="set-novo">+ Novo setor</button></div>
@@ -294,28 +331,8 @@
           </table>
         </div>
         </section>
-        <section class="sis-sec" id="sis-identidade" aria-labelledby="sis-identidade-t">
-          <h2 id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
-        <form id="form-logo" class="cartao-cfg sem-titulo" autocomplete="off">
-                    <div class="logo-cfg">
-            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true">+</span></div>
-            <div class="logo-controles">
-              <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
-                Aceita PNG, JPEG ou WebP; a imagem é reduzida automaticamente. Prefira fundo transparente ou branco.</p>
-              <input type="file" id="logo-arquivo" accept="image/png,image/jpeg,image/webp" hidden>
-              <div class="logo-linha">
-                <button type="button" class="btn sec" id="logo-escolher">Escolher imagem…</button>
-                <label class="logo-pin">PIN do gestor
-                  <input class="pin" id="logo-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off">
-                </label>
-                <button type="submit" class="btn primario" id="logo-salvar" disabled>Salvar logotipo</button>
-                <button type="button" class="btn sec" id="logo-restaurar">Restaurar padrão</button>
-              </div>
-              <p class="erro" role="alert" hidden></p>
-            </div>
-          </div>
-        </form>
-        </section>
+      </div>
+      <div id="sub-backup" class="sub" hidden>
         <section class="sis-sec" id="sis-dados" aria-labelledby="sis-dados-t">
           <h2 id="sis-dados-t" tabindex="-1">Backup e retenção</h2>
         <section class="cartao-cfg" id="cartao-dados" >
@@ -330,12 +347,6 @@
           </div>
           <p class="verificacao" id="ret-resultado" role="status"></p>
           <p class="dica" id="versao-schema"></p>
-        </section>
-        </section>
-        <section class="sis-sec" id="sis-uso" aria-labelledby="sis-uso-t">
-          <h2 id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
-        <div class="kpis" id="sistema-kpis"></div>
-        <p class="dica" id="sistema-aviso"></p>
         </section>
       </div>
     </section>
