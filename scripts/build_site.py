@@ -87,7 +87,7 @@ def main():
     # só rebaixa o que mudou e nunca usa um arquivo antigo depois de uma atualização.
     css = DESTINO / "style.css"
     css.write_text(minificar_css(css.read_text(encoding="utf-8")), encoding="utf-8")
-    for nome in ("style.css", "assinatura.js", "painel.js", "app.js", "config.js"):
+    for nome in ("style.css", "assinatura.js", "xlsx.js", "painel.js", "app.js", "config.js"):
         arq = DESTINO / nome
         if not arq.exists():
             continue

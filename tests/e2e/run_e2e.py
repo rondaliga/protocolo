@@ -195,6 +195,7 @@ try:
         page.click("#btn-imprimir-livro"); page.wait_for_timeout(1200)
         assert page.evaluate("window.__imprimiu") == 1
         assert page.locator("#print-root.livro table.p-tab tbody tr").count() == 2
+        assert page.locator("#print-root.livro table.p-tab thead tr").count() == 2 and page.locator("#print-root.livro thead th[colspan=\"2\"]").count() == 3
         pdf_da_impressao(page, "livro.pdf", True)
         # alterar PIN
         page.click("#btn-pin"); page.fill("#form-pin input[name=atual]", "5555"); page.fill("#form-pin input[name=novo]", "5556")
@@ -217,8 +218,13 @@ try:
         page.click("#detalhe-corpo [data-fechar]")
         with page.expect_download() as dl: page.click("#aud-csv")
         csv = Path(dl.value.path()).read_text(encoding="utf-8-sig"); assert "Protocolo registrado" in csv and "Data;Hora;Tipo" in csv.replace('"', "")
+        with page.expect_download() as dx: page.click("#aud-xlsx")
+        xp = Path(dx.value.path()); import shutil; shutil.copy(xp, Path(sys.argv[1]) / "trilha.xlsx")
+        assert dx.value.suggested_filename.endswith(".xlsx")
+        txt_trilha = page.inner_text("#tbody-audit"); assert "Descrição:" in txt_trilha or "Sem filtros" in txt_trilha or "Protocolo" in txt_trilha
         page.click("#aud-imprimir"); page.wait_for_timeout(1200)
         assert page.locator("#print-root.livro table.p-tab tbody tr").count() >= 5
+        assert page.locator("#print-root.livro table.p-tab thead tr").count() == 1 and page.locator("#print-root .p-rodape").count() == 0
         pdf_da_impressao(page, "trilha.pdf", True)
         page.evaluate("document.getElementById('print-root').innerHTML=''")
 

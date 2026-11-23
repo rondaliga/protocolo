@@ -214,7 +214,7 @@ A imagem é gerada no navegador no instante da assinatura e gravada como PNG; as
 As fontes usadas são as **instaladas no aparelho** (nada é baixado); em aparelhos sem a fonte, cai numa alternativa parecida.
 
 **Trilha de auditoria reorganizada**: colunas Data/hora · Tipo · Usuário · Ação · Protocolo · O que aconteceu (texto legível, sem JSON);
-filtros por busca, tipo de evento, usuário e período; paginação; **Exportar CSV** (até 5.000 linhas, protegido contra injeção de
+filtros por busca, tipo de evento, usuário e período; paginação; **Exportar Excel (.xlsx)** (datas e horas reais, colunas já dimensionadas, cabeçalho fixo e filtro; recomendado) e **Exportar CSV** (até 5.000 linhas, protegido contra injeção de
 fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registradas.
 
 ### Limites honestos da versão 3
@@ -266,7 +266,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 
 **Padronização**
 - O semáforo "vence em breve", o card do painel e o filtro agora seguem o parâmetro **Avisar com antecedência (dias)** (antes era fixo em 2).
-- Datas em `dd/mm/aaaa` e horas em `HH:MM`, no fuso da unidade, em telas, impressões e CSV; cabeçalho único em todas as impressões (livro, ficha, trilha).
+- Datas em `dd/mm/aaaa` e horas em `HH:MM`, no fuso da unidade, em telas, impressões e CSV; cabeçalho e rodapé únicos em todas as impressões (livro, ficha, trilha). O rodapé “PROTOCOLO INTERNO” e a numeração de páginas saem do próprio `@page`; se o navegador também imprimir data/URL nas margens, desmarque “Cabeçalhos e rodapés” na janela de impressão.
 
 **Segurança e LGPD**
 - Ao abrir a trilha, o selo "Trilha íntegra" aparece sozinho (o botão continua para refazer).

@@ -11,7 +11,7 @@
     // ================================================================== TRILHA DE AUDITORIA
     const CATEGORIAS = {
       acesso: 'Acesso', protocolo: 'Protocolo', tramitacao: 'Tramitação', correcao: 'Correção',
-      prazo: 'Prazo / aviso', impressao: 'Impressão', seguranca: 'Segurança', administracao: 'Administração',
+      prazo: 'Prazo e aviso', impressao: 'Impressão', seguranca: 'Segurança', administracao: 'Administração',
     };
     const ACOES = {
       LOGIN: 'Entrou no sistema', LOGOUT: 'Saiu do sistema', LOGOUT_INATIVIDADE: 'Sessão encerrada por inatividade',
@@ -20,11 +20,11 @@
       RECEBIMENTO_SETOR: 'Recebimento do setor (3ª etapa)', DESCRICAO_CORRIGIDA: 'Descrição corrigida',
       PRAZO_AJUSTADO: 'Prazo ajustado', ALERTA_SLA: 'Aviso: tempo máximo excedido', ALERTA_PRAZO_VENCIDO: 'Aviso: prazo vencido',
       ALERTA_PRAZO_PROXIMO: 'Aviso: prazo próximo', IMPRESSAO_FICHA: 'Ficha impressa', IMPRESSAO_LIVRO: 'Livro impresso',
-      IMPRESSAO_TRILHA: 'Trilha impressa/exportada', PIN_ALTERADO: 'PIN alterado pelo próprio usuário',
+      IMPRESSAO_TRILHA: 'Trilha impressa ou exportada', PIN_ALTERADO: 'PIN alterado pelo próprio usuário',
       SENHA_ALTERADA: 'Senha alterada pelo próprio usuário', PIN_REDEFINIDO: 'PIN redefinido pelo gestor',
       PIN_DESBLOQUEADO: 'PIN desbloqueado', SENHA_REDEFINIDA: 'Senha redefinida pelo gestor', USUARIO_CRIADO: 'Usuário criado',
       USUARIO_ATUALIZADO: 'Usuário atualizado', USUARIO_ATIVADO: 'Usuário reativado', USUARIO_DESATIVADO: 'Usuário desativado',
-      SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra/parâmetro alterado', FERIADO_SALVO: 'Feriado cadastrado',
+      SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra alterada', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
       PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido',
@@ -71,23 +71,26 @@
       switch (acao) {
         case 'PROTOCOLO_CRIADO':
           add(`${d.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${d.urgente ? ' URGENTE' : ''}`);
-          add(`descrição: ${aspas(d.descricao || '')}`);
-          add(`prazo: ${dia(d.prazo)}`); add(d.foto ? 'com foto' : 'sem foto'); add(ASSIN[d.assinatura]);
+          add(`Descrição: ${aspas(d.descricao || '')}`);
+          add(`Prazo: ${dia(d.prazo)}`); add(d.foto ? 'Com foto' : 'Sem foto'); add(ASSIN[d.assinatura]);
           break;
-        case 'RECEBIMENTO_ADM': add(`destino: ${d.setor || '—'}`); add(ASSIN[d.assinatura]); if (d.como_gestor) add('feito pelo gestor'); break;
-        case 'RECEBIMENTO_SETOR': add(`setor: ${d.setor || '—'}`); add(ASSIN[d.assinatura]); if (d.como_gestor) add('feito pelo gestor'); break;
-        case 'DESCRICAO_CORRIGIDA': add(`de ${aspas(d.anterior)} para ${aspas(d.nova)}`); add(`justificativa: ${d.justificativa}`); break;
-        case 'PRAZO_AJUSTADO': add(`de ${dia(d.anterior)} para ${dia(d.novo)}`); add(`justificativa: ${d.justificativa}`); break;
-        case 'ALERTA_SLA': add(`etapa ${d.etapa === 2 ? 'do ADM' : 'do setor'} sem recebimento no tempo máximo`); break;
-        case 'ALERTA_PRAZO_PROXIMO': add(`${d.dias === 1 ? 'falta 1 dia' : `faltam ${d.dias} dias`} para o prazo`); break;
-        case 'ALERTA_PRAZO_VENCIDO': add('prazo vencido sem conclusão'); break;
-        case 'IMPRESSAO_FICHA': add(d.numero ? `protocolo ${d.numero}` : ''); break;
-        case 'IMPRESSAO_LIVRO': case 'IMPRESSAO_TRILHA': add(`filtros: ${d.filtros || 'nenhum'}`); break;
+        case 'RECEBIMENTO_ADM': add(`Destino: ${d.setor || '—'}`); add(ASSIN[d.assinatura]); if (d.como_gestor) add('Feito pelo gestor'); break;
+        case 'RECEBIMENTO_SETOR': add(`Setor: ${d.setor || '—'}`); add(ASSIN[d.assinatura]); if (d.como_gestor) add('Feito pelo gestor'); break;
+        case 'DESCRICAO_CORRIGIDA': add(`de ${aspas(d.anterior)} para ${aspas(d.nova)}`); add(`Justificativa: ${d.justificativa}`); break;
+        case 'PRAZO_AJUSTADO': add(`de ${dia(d.anterior)} para ${dia(d.novo)}`); add(`Justificativa: ${d.justificativa}`); break;
+        case 'ALERTA_SLA': add(`Etapa ${d.etapa === 2 ? 'do ADM' : 'do setor'} sem recebimento no tempo máximo`); break;
+        case 'ALERTA_PRAZO_PROXIMO': add(`${d.dias === 1 ? 'Falta 1 dia' : `Faltam ${d.dias} dias`} para o prazo`); break;
+        case 'ALERTA_PRAZO_VENCIDO': add('Prazo vencido sem conclusão'); break;
+        case 'IMPRESSAO_FICHA': add(d.numero ? `Protocolo ${d.numero}` : ''); break;
+        case 'IMPRESSAO_LIVRO': case 'IMPRESSAO_TRILHA': {
+          let f = String(d.filtros || ''); const m = acao === 'IMPRESSAO_TRILHA' && f.match(/^(impressão|CSV|Excel)\s·\s(.*)$/);
+          if (m) { add(`Formato: ${m[1]}`); f = m[2]; }
+          add(!f || /^(sem filtros|nenhum)$/i.test(f) ? 'Sem filtros' : `Filtros: ${f}`); break; }
         case 'USUARIO_BLOQUEADO': add('5 PINs incorretos seguidos: bloqueio de 5 minutos'); break;
-        case 'USUARIO_CRIADO': add(`${d.nome} (${d.email})`); add(`perfil: ${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''}`); add(d.conta_nova === false ? 'conta já existia no Auth' : ''); break;
+        case 'USUARIO_CRIADO': add(`${d.nome} (${d.email})`); add(`Perfil: ${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''}`); add(d.conta_nova === false ? 'Conta já existia no Auth' : ''); break;
         case 'USUARIO_ATUALIZADO':
           add(`${d.nome_anterior || ''}${d.nome_anterior !== d.nome ? ` → ${d.nome}` : ''} (${d.email || ''})`);
-          add(`perfil: ${PAPEIS[d.papel_anterior] || d.papel_anterior} → ${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''}`); break;
+          add(`Perfil: ${PAPEIS[d.papel_anterior] || d.papel_anterior} → ${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''}`); break;
         case 'USUARIO_ATIVADO': case 'USUARIO_DESATIVADO': case 'SENHA_REDEFINIDA': case 'PIN_REDEFINIDO': case 'PIN_DESBLOQUEADO':
           add(`${d.nome || ''} (${d.email || ''})`); break;
         case 'SETOR_SALVO': add(`${d.setor} — ${d.ativo ? 'ativo' : 'inativo'}${d.novo ? ' (novo)' : ''}`); break;
@@ -98,17 +101,17 @@
         case 'MFA_REDEFINIDO': add(`${d.nome || d.email || ''}${d.fatores != null ? ` (${d.fatores} cadastro${d.fatores === 1 ? '' : 's'} removido${d.fatores === 1 ? '' : 's'})` : ''}`); break;
         case 'BACKUP_EXPORTADO': add(`${d.protocolos ?? 0} protocolos, ${d.eventos ?? 0} eventos`); break;
         case 'PROTOCOLO_EXCLUIDO':
-          add(`protocolo ${d.numero || ''}`); add(`${d.tipo === 'judicial' ? 'demanda judicial' : 'correspondência'}, ${pl(d.etapas_registradas ?? 0, 'etapa', 'etapas')}${d.fotos ? ', com foto' : ''}`);
-          if (d.trilha_removida) add(`${pl(d.trilha_removida, 'evento removido', 'eventos removidos')} da trilha`); add(`justificativa: ${d.justificativa}`); break;
+          add(`Protocolo ${d.numero || ''}`); add(`${d.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}, ${pl(d.etapas_registradas ?? 0, 'etapa', 'etapas')}${d.fotos ? ', com foto' : ''}`);
+          if (d.trilha_removida) add(`${pl(d.trilha_removida, 'evento removido', 'eventos removidos')} da trilha`); add(`Justificativa: ${d.justificativa}`); break;
         case 'TRILHA_EXCLUIDA':
-          add(`${pl(d.removidos, 'evento removido', 'eventos removidos')} — ${d.modo === 'tudo' ? 'toda a trilha' : `período de ${dia(d.de)} a ${dia(d.ate)}`}`); add(`justificativa: ${d.justificativa}`); break;
+          add(`${pl(d.removidos, 'evento removido', 'eventos removidos')} (${d.modo === 'tudo' ? 'toda a trilha' : `período de ${dia(d.de)} a ${dia(d.ate)}`})`); add(`Justificativa: ${d.justificativa}`); break;
         case 'FERIADO_SALVO': case 'FERIADO_REMOVIDO': add(`${dia(d.data)} — ${d.descricao}`); break;
         case 'PERFIL_CADASTRADO': add(`${d.email} (${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''})`); break;
         case 'PERFIL_DESATIVADO': case 'PERFIL_REATIVADO': add(d.email); break;
         default:
           Object.entries(d || {}).forEach(([k, v]) => add(`${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`));
       }
-      return L.filter(Boolean).join(' · ');
+      return L.filter(Boolean).map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' · ');
     }
 
     // número do protocolo; se ele foi excluído, o número vem do registro da exclusão ou aparece "(excluído)"
@@ -187,6 +190,32 @@
         const blob = new Blob([`﻿${linhas.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = `trilha-auditoria-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        toast(`${pl(itens.length, 'evento exportado', 'eventos exportados')}${aud.total > itens.length ? ` de ${aud.total} (limite de 5000)` : ''}.`);
+      } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
+    }
+    const partesLocais = (iso) => {                  // data/hora local da unidade, como números (para a planilha)
+      const f = new Intl.DateTimeFormat('en-CA', { timeZone: (window.APP_CONFIG && window.APP_CONFIG.TIMEZONE) || 'America/Fortaleza', hourCycle: 'h23',
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const o = {}; f.formatToParts(new Date(iso)).forEach((q) => { o[q.type] = Number(q.value); });
+      return { y: o.year, m: o.month, d: o.day, h: o.hour, mi: o.minute, s: o.second };
+    };
+    async function exportarXlsx() {
+      const btn = $('#aud-xlsx'); btn.disabled = true;
+      try {
+        if (typeof window.criarXlsx !== 'function') throw new Error('Não foi possível gerar a planilha. Atualize a página e tente novamente.');
+        const itens = await todosEventos(5000);
+        await rpc('registrar_exportacao', { p_tipo: 'TRILHA', p_filtros: `Excel · ${descFiltrosAud() || 'sem filtros'}` });
+        const bytes = window.criarXlsx({
+          nome: 'Trilha de auditoria',
+          colunas: [{ titulo: 'Data', largura: 12, tipo: 'data' }, { titulo: 'Hora', largura: 10, tipo: 'hora' }, { titulo: 'Tipo', largura: 18 },
+            { titulo: 'Usuário', largura: 26 }, { titulo: 'Ação', largura: 32 }, { titulo: 'Protocolo', largura: 16 }, { titulo: 'Detalhes', largura: 90, tipo: 'texto-longo' }],
+          linhas: itens.map((x) => { const t = partesLocais(x.ocorrido_em); return [t, t, CATEGORIAS[x.categoria] || x.categoria, x.usuario_nome || 'Sistema',
+            ACOES[x.acao] || x.acao, textoProt(x, ''), resumo(x.acao, x.detalhes)]; }),
+        });
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `trilha-auditoria-${new Date().toISOString().slice(0, 10)}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
         toast(`${pl(itens.length, 'evento exportado', 'eventos exportados')}${aud.total > itens.length ? ` de ${aud.total} (limite de 5000)` : ''}.`);
       } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
@@ -363,21 +392,21 @@
               <label>Correspondências <span class="un-in"><input type="number" name="prazo_correspondencia_dias" min="0" max="365" step="1" required><i>dias</i></span></label>
               <label>Avisar com antecedência de <span class="un-in"><input type="number" name="alerta_prazo_dias" min="0" max="365" step="1" required><i>dias</i></span></label>
             </div></section>
+          <section class="cartao-cfg"><h3>Segurança da sessão</h3>
+            <p class="dica">Sem usar o sistema por este tempo, o usuário é desconectado. Aceita 6h, 6:00, 90min ou 1,5 (horas); de 5 min a 24 h.</p>
+            <div class="param-linhas"><label>Encerrar após ${campoDur('sessao_inatividade_min', 1440)}</label></div></section>
           <section class="cartao-cfg larga"><h3>Tempo máximo para receber (horas úteis)</h3>
             <p class="dica">Aceita 4h30, 4:30, 90min, 1,5 (horas) ou 1d (uma jornada de expediente). Ao estourar, o sistema envia aviso.</p>
             <table class="param-tab"><thead><tr><th>Etapa</th><th>Normal</th><th>Urgente</th></tr></thead><tbody>
               <tr><th scope="row">ADM recebe o documento</th><td>${campoDur('sla_adm_min')}</td><td>${campoDur('sla_adm_urgente_min')}</td></tr>
               <tr><th scope="row">Setor de destino recebe</th><td>${campoDur('sla_setor_min')}</td><td>${campoDur('sla_setor_urgente_min')}</td></tr>
             </tbody></table></section>
-          <section class="cartao-cfg"><h3>Segurança da sessão</h3>
-            <p class="dica">Sem usar o sistema por este tempo, o usuário é desconectado. Aceita 6h, 6:00, 90min ou 1,5 (horas); de 5 min a 24 h.</p>
-            <div class="param-linhas"><label>Encerrar após ${campoDur('sessao_inatividade_min', 1440)}</label></div></section>
           <section class="cartao-cfg larga"><h3>Regras gerais</h3>
             <div class="param-linhas">
-              <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> Exigir foto do envelope nas demandas judiciais</label>
-              <label class="chk neutro"><input type="checkbox" name="gestor_ignora_segregacao"> Permitir que o gestor assine mais de uma etapa do mesmo protocolo</label>
-              <label class="chk neutro"><input type="checkbox" name="mfa_gestor_obrigatorio"> Exigir verificação em duas etapas (aplicativo autenticador) de todo gestor
-                <small class="dica">Ao ligar, cada gestor será obrigado a cadastrar o aplicativo no próximo acesso. Sem o código, o servidor recusa o acesso.</small></label>
+              <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> <span class="chk-txt">Exigir foto do envelope nas demandas judiciais</span></label>
+              <label class="chk neutro"><input type="checkbox" name="gestor_ignora_segregacao"> <span class="chk-txt">Permitir que o gestor assine mais de uma etapa do mesmo protocolo</span></label>
+              <label class="chk neutro"><input type="checkbox" name="mfa_gestor_obrigatorio"> <span class="chk-txt">Exigir verificação em duas etapas (aplicativo autenticador) de todo gestor
+                <small class="dica">Ao ligar, cada gestor será obrigado a cadastrar o aplicativo no próximo acesso. Sem o código, o servidor recusa o acesso.</small></span></label>
               <label>Endereço do sistema (usado nos e-mails) <input type="url" name="url_sistema" maxlength="200" placeholder="https://…"></label>
             </div></section>
         </div>`;
@@ -476,7 +505,7 @@
         $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
           + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')
           + k('E-mails na fila', r.email_pendente, 'aguardando envio') + k('E-mails com erro', r.email_erro, r.ultimo_erro_email || 'nenhum erro')
-          + k('E-mails enviados', r.email_enviado);
+          + k('E-mails enviados', r.email_enviado, 'total entregue');
         $('#sistema-aviso').textContent = r.integracao_configurada
           ? 'Integração de e-mail configurada. Se a fila crescer sem enviar, confira o fluxo “Avisos por e-mail” na aba Actions do GitHub.'
           : 'Integração de e-mail ainda não configurada: os avisos ficam só no sistema (sino). Veja a seção 4B do README.';
@@ -495,6 +524,7 @@
       $('#aud-ant').addEventListener('click', () => { aud.pagina -= 1; carregarAuditoria(); });
       $('#aud-prox').addEventListener('click', () => { aud.pagina += 1; carregarAuditoria(); });
       $('#aud-csv').addEventListener('click', exportarCsv);
+      $('#aud-xlsx').addEventListener('click', exportarXlsx);
       $('#aud-imprimir').addEventListener('click', imprimirTrilha);
       $('#tbody-audit').addEventListener('click', (ev) => { const b = ev.target.closest('[data-prot]'); if (b) LP.abrirDetalhe(b.dataset.prot); });
 

@@ -21,6 +21,7 @@
   // ------------------------------------------------------------------ configuração
   const CFG = Object.assign({ UNIDADE: 'CECAN – LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 360,
                               ASSINATURA_OBRIGATORIA: false }, window.APP_CONFIG || {});
+  CFG.UNIDADE = String(CFG.UNIDADE).trim().replace(/\s+[-–—]\s+/g, ' – ');
   const BASE = String(CFG.SUPABASE_URL || '').replace(/\/+$/, '');
   const KEY = String(CFG.SUPABASE_ANON_KEY || '');
   const CONFIG_OK = /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:/]?)/.test(BASE) && KEY.length > 20 && !/SEU-PROJETO|SUA_CHAVE/.test(BASE + KEY);
@@ -712,7 +713,7 @@
         <div class="s">RECEBIMENTO E TRAMITAÇÃO DE DEMANDAS JUDICIAIS E CORRESPONDÊNCIAS</div>
         <div class="u">Unidade/Instituição: ${esc(CFG.UNIDADE)}</div>${subtitulo ? `<div class="s">${esc(subtitulo)}</div>` : ''}</div><div></div></div>`;
   }
-  const rodapeImpressao = () => '<div class="p-rodape">PROTOCOLO INTERNO • Demandas judiciais e correspondências</div>';
+  const rodapeImpressao = () => '';   // o rodapé impresso vem do @page (style.css), igual em todas as páginas
 
   function celulaAssinatura(tipo, png, nome, setor) {
     const img = pngSeguro(png);
@@ -744,8 +745,9 @@
         rows.forEach((x) => { sig[`${x.protocolo_id}:${x.etapa}`] = x.assinatura_png; });
       }
       const largura = new Array(11).fill(0);
-      const cab = ['Nº', '1º Recebimento<br>Portaria<br>Data', 'Hora', 'DESCRIÇÃO DO DOCUMENTO', 'Assinatura<br>— Portaria',
-        '2º Recebimento<br>ADM<br>Data', 'Hora', 'Assinatura<br>ADM', '3º Recebimento<br>Setor de destino<br>Data', 'Hora', 'Assinatura<br>Setor de destino'];
+      const cab = `<tr><th rowspan="2">Nº</th><th colspan="2">1º Recebimento<br>Portaria</th><th rowspan="2">Descrição do documento</th><th rowspan="2">Assinatura<br>Portaria</th>
+        <th colspan="2">2º Recebimento<br>ADM</th><th rowspan="2">Assinatura<br>ADM</th><th colspan="2">3º Recebimento<br>Setor de destino</th><th rowspan="2">Assinatura<br>Setor de destino</th></tr>
+        <tr><th>Data</th><th>Hora</th><th>Data</th><th>Hora</th><th>Data</th><th>Hora</th></tr>`;
       const linhas = r.itens.map((x) => `<tr>
         <td><b>${esc(x.numero)}</b></td><td>${data(x.e1_em)}</td><td>${hora(x.e1_em)}</td>
         <td class="d">${x.tipo === 'judicial' ? '<b>[JUDICIAL' + (x.urgente ? ' URGENTE' : '') + ']</b> ' : ''}${esc(x.descricao)}${x.n_correcoes ? ' <i>(descrição corrigida)</i>' : ''}${x.prazo_data ? `<br><small>Prazo: ${data(x.prazo_data + 'T12:00:00')}</small>` : ''}</td>
@@ -759,7 +761,7 @@
         <p class="p-meta">Filtros: ${esc(descr || 'nenhum')} · Registros: ${r.total}${r.total > r.itens.length ? ` (impressos os ${r.itens.length} mais recentes)` : ''}
           · Emitido por ${esc(estado.perfil.nome)} em ${data(agora)} ${hora(agora)}</p>
         <table class="p-tab"><colgroup>${largura.map((w, i) => `<col class="w${i}">`).join('')}</colgroup>
-          <thead><tr>${cab.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
+          <thead>${cab}</thead>
           <tbody>${linhas || '<tr><td colspan="11">Nenhum registro.</td></tr>'}</tbody></table>${rodapeImpressao()}`);
       if (r.total > r.itens.length) toast(`Foram impressos os ${r.itens.length} registros mais recentes de ${r.total}. Use filtros para os demais.`);
     } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
