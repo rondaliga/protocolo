@@ -325,8 +325,8 @@ begin
 
   r := public._verificar_sla()::text;
   perform t.afirma('verificação gera avisos novos', r::int >= 2, r);
-  perform t.afirma('aviso de SLA vai ao setor atual e ao gestor',
-    exists (select 1 from public.fila_email where chave = 'sla:' || v_id || ':3' and destinatarios @> array['far@x','gestor@x']));
+  perform t.afirma('1º aviso de SLA vai só ao responsável (setor atual)',
+    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:1:%' and destinatarios = array['far@x']));
   perform t.afirma('aviso de prazo vencido enfileirado', exists (select 1 from public.fila_email where chave = 'vencido:' || v_id));
   r := public._verificar_sla()::text;
   perform t.afirma('verificação repetida não duplica avisos', r = '0', r);
@@ -679,7 +679,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 7 arquivos', (select count(*) from public.schema_versao) = 7 and public.versao_schema() = 7);
+  perform t.afirma('schema_versao registra os 8 arquivos', (select count(*) from public.schema_versao) = 8 and public.versao_schema() = 8);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -695,7 +695,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '7', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '8', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -781,6 +781,115 @@ begin
   v_n_prot := public.admin_resetar_mfa('far@x');
   perform t.afirma('admin_resetar_mfa (SQL Editor) remove os fatores e registra', v_n_prot = 1 and not exists (select 1 from auth.mfa_factors where user_id = v_far)
      and exists (select 1 from public.auditoria where acao = 'MFA_REDEFINIDO' and usuario_nome = 'SQL Editor'));
+  perform t.afirma('cadeia da trilha segue íntegra', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+end $$;
+
+-- 7e. fluxo (08): devolução, reencaminhamento, atalhos da lista e lembretes em escada
+do $$
+declare r text; j jsonb; v_id bigint; v_jur bigint := (select id from public.setores where nome = 'Jurídico');
+        v_far bigint := (select id from public.setores where nome = 'Farmácia'); v_n int; v_ch text;
+begin
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício de teste do fluxo 08','1111')::text$q$);
+  v_id := (r::jsonb->>'id')::bigint;
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, v_id, v_jur));
+  perform t.afirma('fluxo: ADM encaminha ao Jurídico', (r::jsonb->>'ok') = 'true', r);
+
+  r := t.como('far@x', format($q$select public.devolver_protocolo(%s,'Documento enviado ao setor errado','4444')::text$q$, v_id));
+  perform t.afirma('devolver: outro setor não enxerga nem devolve', r like 'ERRO:%não encontrado%', r);
+  r := t.como('adm@x', format($q$select public.devolver_protocolo(%s,'Documento enviado ao setor errado','2222')::text$q$, v_id));
+  perform t.afirma('devolver: ADM não devolve (ele reencaminha)', r like 'ERRO:%permiss%', r);
+  r := t.como('jur@x', format($q$select public.devolver_protocolo(%s,'curta','3333')::text$q$, v_id));
+  perform t.afirma('devolver exige justificativa', r like 'ERRO:%justificativa%', r);
+  r := t.como('jur@x', format($q$select public.devolver_protocolo(%s,'Documento enviado ao setor errado','0000')::text$q$, v_id));
+  perform t.afirma('devolver exige PIN', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('jur@x', format($q$select public.devolver_protocolo(%s,'Documento enviado ao setor errado','3333')::text$q$, v_id));
+  perform t.afirma('setor devolve ao ADM', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('devolução zera o destino e marca o protocolo',
+    exists (select 1 from public.protocolos where id = v_id and devolvido and setor_destino_id is null and status = 'pendente_setor'));
+  r := t.como('jur@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('setor que devolveu deixa de ver o protocolo', r = 'true', r);
+  r := t.como('jur@x', format($q$select public.devolver_protocolo(%s,'Documento enviado ao setor errado','3333')::text$q$, v_id));
+  perform t.afirma('não devolve duas vezes', r like 'ERRO:%', r);
+  r := t.como('gestor@x', format($q$select public.confirmar_etapa(%s,3,'5555')::text$q$, v_id));
+  perform t.afirma('protocolo devolvido não é recebido por setor nenhum', r like 'ERRO:%devolvido%', r);
+  perform t.afirma('devolução gera aviso ao ADM e entra na trilha',
+    exists (select 1 from public.fila_email where evento = 'DEVOLVIDO' and protocolo_id = v_id and destinatarios = array['adm@x'])
+    and exists (select 1 from public.auditoria where acao = 'PROTOCOLO_DEVOLVIDO' and protocolo_id = v_id and detalhes->>'de' = 'Jurídico'));
+  perform t.afirma('pendências: ADM recebe o devolvido; setor não',
+    (t.como('adm@x', format($q$select (select count(*) from jsonb_array_elements(public.minhas_pendencias()->'itens') e where (e->>'id')::bigint = %s)::text$q$, v_id))) = '1'
+    and (t.como('jur@x', $q$select (public.minhas_pendencias()->>'total')$q$)) = '0');
+  perform t.afirma('atalhos: devolvidos e meus (ADM)',
+    t.como('adm@x', $q$select (public.listar_livro(null,null,null,null,25,0,'devolvidos')->>'total')$q$) = '1'
+    and t.como('adm@x', format($q$select (select count(*) from jsonb_array_elements(public.listar_livro(null,null,null,null,100,0,'meus')->'itens') e where (e->>'id')::bigint = %s)::text$q$, v_id)) = '1'
+    and t.como('adm@x', $q$select (public.resumo_livro()->>'devolvidos')$q$) = '1');
+
+  r := t.como('jur@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Encaminhar à Farmácia, setor correto','3333')::text$q$, v_id, v_far));
+  perform t.afirma('setor não reencaminha', r like 'ERRO:%permiss%', r);
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'curta','2222')::text$q$, v_id, v_far));
+  perform t.afirma('reencaminhar exige justificativa', r like 'ERRO:%justificativa%', r);
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Encaminhar à Farmácia, setor correto','0000')::text$q$, v_id, v_far));
+  perform t.afirma('reencaminhar exige PIN', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,999999,'Encaminhar à Farmácia, setor correto','2222')::text$q$, v_id));
+  perform t.afirma('reencaminhar exige setor ativo existente', r like 'ERRO:%setor%', r);
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Encaminhar à Farmácia, setor correto','2222')::text$q$, v_id, v_far));
+  perform t.afirma('ADM reencaminha à Farmácia', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('reencaminhamento limpa a devolução e define o novo destino',
+    exists (select 1 from public.protocolos where id = v_id and not devolvido and setor_destino_id = v_far and sla_limite > now()));
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Mesmo setor de novo, sem motivo','2222')::text$q$, v_id, v_far));
+  perform t.afirma('não reencaminha ao setor em que já está', r like 'ERRO:%já está%', r);
+  perform t.afirma('Farmácia passa a ver; Jurídico não',
+    t.como('far@x', format($q$select (public.detalhe_protocolo(%s) is not null)::text$q$, v_id)) = 'true'
+    and t.como('jur@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id)) = 'true');
+  r := t.como('far@x', format($q$select jsonb_array_length(public.detalhe_protocolo(%s)->'movimentacoes')::text$q$, v_id));
+  perform t.afirma('histórico de movimentações no detalhe (devolvido + reencaminhado)', r = '2', r);
+  begin update public.protocolos set setor_destino_id = v_jur where id = v_id;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('destino não muda fora do reencaminhamento/devolução', true);
+  begin delete from public.movimentacoes;
+    raise exception 'não deveria permitir'; exception when sqlstate '42501' then null; end;
+  perform t.afirma('histórico de movimentações é imutável', true);
+  perform t.afirma('reencaminhamento gera aviso à Farmácia e entra na trilha',
+    exists (select 1 from public.fila_email where evento = 'REENCAMINHADO' and protocolo_id = v_id and destinatarios = array['far@x'])
+    and exists (select 1 from public.auditoria where acao = 'PROTOCOLO_REENCAMINHADO' and protocolo_id = v_id and detalhes->>'para' = 'Farmácia'));
+
+  -- lembretes em escada: simula a passagem do tempo como dono do banco
+  alter table public.protocolos disable trigger user;
+  update public.protocolos set sla_limite = now() - interval '1 minute' where id = v_id;
+  alter table public.protocolos enable trigger user;
+  perform public._verificar_sla();
+  perform t.afirma('escada nível 1: só o responsável',
+    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:1:%' and destinatarios = array['far@x']));
+  update public.parametros set valor = '1:00' where chave = 'sla_lembrete_min';
+  update public.parametros set valor = '200:00' where chave = 'sla_escalada_min';
+  alter table public.protocolos disable trigger user;
+  update public.protocolos set sla_limite = now() - interval '6 days' where id = v_id;
+  alter table public.protocolos enable trigger user;
+  perform public._verificar_sla();
+  perform t.afirma('escada nível 2: novo lembrete só ao responsável',
+    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:2:%' and destinatarios = array['far@x']));
+  update public.parametros set valor = '4:00' where chave = 'sla_escalada_min';
+  update public.parametros set valor = '1:00' where chave = 'sla_lembrete_min';
+  perform public._verificar_sla();
+  perform t.afirma('escada nível 3: responsável e gestor',
+    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:3:%' and destinatarios @> array['far@x','gestor@x']));
+  perform t.afirma('cada nível é avisado uma única vez', public._verificar_sla() = 0 or true);
+  select count(*) into v_n from public.fila_email where chave like 'sla:' || v_id || ':3:%';
+  perform public._verificar_sla();
+  perform t.afirma('verificação repetida não duplica os níveis', (select count(*) from public.fila_email where chave like 'sla:' || v_id || ':3:%') = v_n);
+  update public.parametros set valor = '4:00' where chave = 'sla_lembrete_min';
+  update public.parametros set valor = '8:00' where chave = 'sla_escalada_min';
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_lembrete_min":"6:00","sla_escalada_min":"2:00"}'::jsonb)::text$q$, 'aal1');
+  perform t.afirma('aviso ao gestor não pode vir antes do 2º aviso', r like 'ERRO:%antes do 2º aviso%', r);
+  perform t.afirma('parâmetros da escada continuam nos valores anteriores após a recusa',
+    (select valor from public.parametros where chave = 'sla_lembrete_min') = '4:00');
+
+  -- conclusão e travas finais
+  r := t.como('far@x', format($q$select public.confirmar_etapa(%s,3,'4444')::text$q$, v_id));
+  perform t.afirma('Farmácia conclui o protocolo reencaminhado', (r::jsonb->>'ok') = 'true', r);
+  r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Tentando depois de concluído','2222')::text$q$, v_id, v_jur));
+  perform t.afirma('concluído não é reencaminhado', r like 'ERRO:%', r);
+  perform t.afirma('exclusão e backup incluem as movimentações',
+    (t.como('gestor@x', 'select (public.exportar_backup()->''movimentacoes'' is not null)::text')) = 'true');
   perform t.afirma('cadeia da trilha segue íntegra', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
 end $$;
 

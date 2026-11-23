@@ -18,7 +18,7 @@
       FALHA_PIN: 'PIN incorreto', USUARIO_BLOQUEADO: 'PIN bloqueado',
       PROTOCOLO_CRIADO: 'Protocolo registrado (1ª etapa)', RECEBIMENTO_ADM: 'Recebimento do ADM (2ª etapa)',
       RECEBIMENTO_SETOR: 'Recebimento do setor (3ª etapa)', DESCRICAO_CORRIGIDA: 'Descrição corrigida',
-      PRAZO_AJUSTADO: 'Prazo ajustado', ALERTA_SLA: 'Aviso: tempo máximo excedido', ALERTA_PRAZO_VENCIDO: 'Aviso: prazo vencido',
+      PRAZO_AJUSTADO: 'Prazo ajustado', PROTOCOLO_REENCAMINHADO: 'Protocolo reencaminhado', PROTOCOLO_DEVOLVIDO: 'Protocolo devolvido ao ADM', ALERTA_SLA: 'Aviso: tempo máximo excedido', ALERTA_PRAZO_VENCIDO: 'Aviso: prazo vencido',
       ALERTA_PRAZO_PROXIMO: 'Aviso: prazo próximo', IMPRESSAO_FICHA: 'Ficha impressa', IMPRESSAO_LIVRO: 'Livro impresso',
       IMPRESSAO_TRILHA: 'Trilha impressa ou exportada', PIN_ALTERADO: 'PIN alterado pelo próprio usuário',
       SENHA_ALTERADA: 'Senha alterada pelo próprio usuário', PIN_REDEFINIDO: 'PIN redefinido pelo gestor',
@@ -35,6 +35,7 @@
       prazo_judicial_dias: 'Prazo das demandas judiciais', prazo_correspondencia_dias: 'Prazo das correspondências',
       sla_adm_min: 'Tempo máximo do ADM', sla_adm_urgente_min: 'Tempo máximo do ADM (urgente)',
       sla_setor_min: 'Tempo máximo do setor', sla_setor_urgente_min: 'Tempo máximo do setor (urgente)',
+      sla_lembrete_min: '2º aviso ao responsável após', sla_escalada_min: 'Aviso ao gestor após',
       expediente_inicio: 'Início do expediente', expediente_fim: 'Fim do expediente', alerta_prazo_dias: 'Avisar com antecedência (dias)',
       foto_obrigatoria_judicial: 'Foto obrigatória nas demandas judiciais', gestor_ignora_segregacao: 'Gestor assina mais de uma etapa',
       url_sistema: 'Endereço do sistema', sessao_inatividade_min: 'Encerrar sessão por inatividade após', mfa_gestor_obrigatorio: 'Verificação em duas etapas obrigatória para o gestor',
@@ -78,7 +79,10 @@
         case 'RECEBIMENTO_SETOR': add(`Setor: ${d.setor || '—'}`); add(ASSIN[d.assinatura]); if (d.como_gestor) add('Feito pelo gestor'); break;
         case 'DESCRICAO_CORRIGIDA': add(`de ${aspas(d.anterior)} para ${aspas(d.nova)}`); add(`Justificativa: ${d.justificativa}`); break;
         case 'PRAZO_AJUSTADO': add(`de ${dia(d.anterior)} para ${dia(d.novo)}`); add(`Justificativa: ${d.justificativa}`); break;
-        case 'ALERTA_SLA': add(`Etapa ${d.etapa === 2 ? 'do ADM' : 'do setor'} sem recebimento no tempo máximo`); break;
+        case 'ALERTA_SLA': add(`Etapa ${d.etapa === 2 ? 'do ADM' : 'do setor'} sem recebimento no tempo máximo`);
+          add(d.nivel === 2 ? '2º aviso ao responsável' : d.nivel === 3 ? 'Escalado ao gestor' : d.nivel === 1 ? '1º aviso ao responsável' : ''); break;
+        case 'PROTOCOLO_REENCAMINHADO': add(`Protocolo ${d.numero}`); add(`${d.de ? `de ${d.de} ` : ''}para ${d.para}`); add(`Justificativa: ${d.justificativa}`); break;
+        case 'PROTOCOLO_DEVOLVIDO': add(`Protocolo ${d.numero}`); add(`Devolvido pelo setor ${d.de || '—'}`); add(`Justificativa: ${d.justificativa}`); break;
         case 'ALERTA_PRAZO_PROXIMO': add(`${d.dias === 1 ? 'Falta 1 dia' : `Faltam ${d.dias} dias`} para o prazo`); break;
         case 'ALERTA_PRAZO_VENCIDO': add('Prazo vencido sem conclusão'); break;
         case 'IMPRESSAO_FICHA': add(d.numero ? `Protocolo ${d.numero}` : ''); break;
@@ -241,14 +245,15 @@
 
     // ================================================================== PAINEL DE CONTROLE
     const painel = { sub: 'usuarios', usuarios: [], setores: [] };
-    const SUBS = ['usuarios', 'setores', 'parametros', 'feriados', 'sistema'];
+    const SUBS = ['usuarios', 'sistema'];
 
     function abrirPainel() { trocarSub(painel.sub); }
     function trocarSub(n) {
       painel.sub = n;
       $$('.subaba').forEach((b) => b.classList.toggle('ativa', b.dataset.sub === n));
       SUBS.forEach((s) => { $(`#sub-${s}`).hidden = s !== n; });
-      ({ usuarios: carregarUsuarios, setores: carregarSetores, parametros: carregarParametros, feriados: carregarFeriados, sistema: carregarSistema })[n]();
+      if (n === 'usuarios') carregarUsuarios();
+      else { carregarParametros(); carregarSetores(); carregarFeriados(); carregarSistema(); }
     }
     const falha = (e) => toast(e.message, true);
     const pl = (n, um, varios) => `${n} ${Number(n) === 1 ? um : varios}`;
@@ -401,6 +406,12 @@
               <tr><th scope="row">ADM recebe o documento</th><td>${campoDur('sla_adm_min')}</td><td>${campoDur('sla_adm_urgente_min')}</td></tr>
               <tr><th scope="row">Setor de destino recebe</th><td>${campoDur('sla_setor_min')}</td><td>${campoDur('sla_setor_urgente_min')}</td></tr>
             </tbody></table></section>
+          <section class="cartao-cfg larga"><h3>Lembretes quando o tempo máximo é ultrapassado</h3>
+            <p class="dica">Ao estourar o tempo máximo, o responsável recebe o 1º aviso. Os prazos abaixo contam a partir desse momento, em horas úteis. Quando o protocolo muda de setor, a contagem recomeça.</p>
+            <div class="param-linhas two">
+              <label>2º aviso ao responsável, após ${campoDur('sla_lembrete_min')}</label>
+              <label>Aviso também ao gestor, após ${campoDur('sla_escalada_min')}</label>
+            </div></section>
           <section class="cartao-cfg larga"><h3>Regras gerais</h3>
             <div class="param-linhas">
               <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> <span class="chk-txt">Exigir foto do envelope nas demandas judiciais</span></label>
@@ -441,6 +452,11 @@
         if (!ok) { invalido = true; prev.textContent = el.value.trim() ? `Formato inválido (de 5 min a ${max >= 1440 ? '24 h' : '240 h'})` : 'Informe o tempo'; prev.className = 'dur-previa ruim'; }
         else { prev.textContent = `= ${fmtDur(m)} · ${m} min${m >= jornada && el.name !== 'sessao_inatividade_min' ? ` · ${(m / jornada).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${m / jornada === 1 ? 'dia útil' : 'dias úteis'}` : ''}`; prev.className = 'dur-previa'; }
       });
+      const lem = lerDuracao(f.elements.sla_lembrete_min.value, jornada), esc2 = lerDuracao(f.elements.sla_escalada_min.value, jornada);
+      if (lem != null && esc2 != null && esc2 < lem) {
+        invalido = true; f.elements.sla_escalada_min.classList.add('invalido');
+        const pv = $('#p-sla_escalada_min'); pv.textContent = 'O aviso ao gestor não pode vir antes do 2º aviso'; pv.className = 'dur-previa ruim';
+      }
       const i = hmEmMin(f.elements.expediente_inicio.value), fim = hmEmMin(f.elements.expediente_fim.value), av = $('#p-exped');
       const exped = !(i < fim); av.hidden = !exped; av.textContent = exped ? 'O fim do expediente deve ser depois do início.' : ''; if (exped) invalido = true;
       const mudou = Object.entries(valoresForm()).some(([k, v]) => paramMudou(k, v));
@@ -500,7 +516,7 @@
       try {
         logoEst.novo = null; $('#logo-salvar').disabled = true; $('#logo-pin').value = ''; mostrarLogoPrevia(LP.estado().logoSrc);
         const r = await rpc('painel_resumo');
-        rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 7${v < 7 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+        rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 8${v < 8 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
         const k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
         $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
           + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')
@@ -552,6 +568,8 @@
       });
 
       // painel
+      $('#sis-indice').addEventListener('click', (ev) => { const b = ev.target.closest('[data-ir]'); if (!b) return;
+        const s = $(`#${b.dataset.ir}`); s.scrollIntoView({ behavior: 'smooth', block: 'start' }); s.querySelector('h2').focus({ preventScroll: true }); });
       $('#subabas').addEventListener('click', (ev) => { const b = ev.target.closest('.subaba'); if (b) trocarSub(b.dataset.sub); });
       ['#usr-busca', '#usr-filtro-papel', '#usr-filtro-ativo'].forEach((s) => $(s).addEventListener('input', renderUsuarios));
       $('#usr-novo').addEventListener('click', () => abrirUsuario(null));

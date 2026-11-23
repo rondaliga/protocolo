@@ -263,14 +263,14 @@ try:
         assert "Primeiro acesso pendente" in page.inner_text("#tbody-usr tr:has-text('Rita Nova')")
         page.select_option("#usr-filtro-papel", "adm"); assert page.locator("#tbody-usr tr").count() == 2; page.select_option("#usr-filtro-papel", "")
         # setor, regras e feriado
-        page.click("[data-sub=setores]"); page.click("#set-novo"); page.fill("#form-setor input[name=nome]", "Superintendência Teste")
+        page.click("[data-sub=sistema]"); page.click("#set-novo"); page.fill("#form-setor input[name=nome]", "Superintendência Teste")
         page.click("#form-setor button[type=submit]"); esperar_toast(page, "Setor salvo"); page.wait_for_timeout(400)
         assert "Superintendência Teste" in page.inner_text("#tbody-set")
-        page.click("[data-sub=parametros]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
-        page.click("[data-sub=feriados]"); page.fill("#form-feriado input[name=data]", "2027-02-09"); page.fill("#form-feriado input[name=descricao]", "Carnaval")
+        page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
+        page.click("[data-sub=sistema]"); page.fill("#form-feriado input[name=data]", "2027-02-09"); page.fill("#form-feriado input[name=descricao]", "Carnaval")
         page.click("#form-feriado button[type=submit]"); esperar_toast(page, "Feriado cadastrado"); page.wait_for_timeout(400)
         assert "Carnaval" in page.inner_text("#tbody-fer"); page.click("#tbody-fer button"); page.wait_for_timeout(500)
-        page.click("[data-sub=sistema]"); page.locator("#sistema-kpis .kpi").first.wait_for(); assert "usuários ativos" in page.inner_text("#sistema-kpis").lower()
+        page.click("[data-sub=sistema]"); page.click("[data-ir=sis-feriados]"); page.locator("#sistema-kpis .kpi").first.wait_for(); assert "usuários ativos" in page.inner_text("#sistema-kpis").lower()
         page.screenshot(path=str(OUT / "8c_painel_sistema.png"))
         sair(page)
 
@@ -350,7 +350,7 @@ try:
         assert psql("select count(*) from public.protocolos where numero='2026-0001'") == "0"
 
         # Prazos e regras: formatos de hora, um único botão Salvar
-        page.click("#btn-aba-painel"); page.click("[data-sub=parametros]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
         assert page.locator("#form-param button[type=submit]").count() == 1 and page.locator("#form-param button:has-text('Salvar')").count() == 1
         expect(page.locator("#param-corpo input[name=sla_adm_min]")).to_have_value("4h", timeout=6000)
         assert page.locator("#param-salvar").is_disabled(), page.inner_text("#param-estado")
@@ -459,12 +459,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=sistema]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "7 de 7" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "8 de 8" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "auditoria"} and bkp["versao_schema"] == 7
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 8
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -547,7 +547,7 @@ try:
         page.click("#btn-mfa"); page.locator("#mfa-cad-ativo").wait_for(state="visible")
         page.once("dialog", lambda d: d.accept()); page.click("#mfa-desativar"); esperar_toast(page, "desativada")
         assert psql("select count(*) from auth.mfa_factors") == "0"
-        page.click("#btn-aba-painel"); page.click("[data-sub=parametros]"); page.locator("#form-param input[name=mfa_gestor_obrigatorio]").wait_for(); page.wait_for_timeout(900)
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#form-param input[name=mfa_gestor_obrigatorio]").wait_for(); page.wait_for_timeout(900)
         page.check("#form-param input[name=mfa_gestor_obrigatorio]"); page.click("#param-salvar"); esperar_toast(page, "Alterações salvas"); page.wait_for_timeout(500)
         assert psql("select valor from public.parametros where chave='mfa_gestor_obrigatorio'") == "true"
         sair(page); page.goto(URL); page.locator("#form-login").wait_for(state="visible")
@@ -579,6 +579,40 @@ try:
         pr.clock.fast_forward("06:30:00"); pr.locator("#view-login").wait_for(state="visible", timeout=8000)
         assert "inatividade" in pr.inner_text("#login-erro") + pr.inner_text("#toast"), "mensagem de inatividade esperada"
         rel.close()
+        login(page, "gestor")
+        # devolução e reencaminhamento (protocolo montado direto no banco, na situação "aguardando o setor")
+        sair(page)
+        psql("insert into public.protocolos (numero, descricao, status, created_by, tipo, urgente) select '2026-9001','Ofício de teste da devolução','pendente_adm', id, 'correspondencia', false from auth.users where email='portaria@teste.local'")
+        psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9001'),'2026-9001',1,(select user_id from public.perfis where email='portaria@teste.local'),'Maria (Portaria)',null,null,null,now())")
+        psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9001'),'2026-9001',2,(select user_id from public.perfis where email='adm@teste.local'),'João (Administração)',null,null,null,now())")
+        psql("update public.protocolos set setor_destino_id=(select id from public.setores where nome='Jurídico'), sla_limite=now()+interval '2 days' where numero='2026-9001'")
+        login(page, "juridico"); page.locator("#tbody tr:has-text('2026-9001')").wait_for()
+        assert page.locator("#atalho-meus").is_visible()
+        page.click("#atalhos [data-alerta=meus]"); page.wait_for_timeout(500); assert page.locator("#tbody tr:has-text('2026-9001')").count() == 1
+        assert "sel" in page.get_attribute("#atalhos [data-alerta=meus]", "class")
+        page.click("#tbody tr:has-text('2026-9001')"); page.locator("#dlg-detalhe[open]").wait_for()
+        assert page.locator("[data-acao=reencaminhar]").count() == 0 and page.locator("[data-acao=devolver]").count() == 1
+        page.click("[data-acao=devolver]"); page.locator("#dlg-mov[open]").wait_for(); assert page.locator("#lbl-mov-setor").is_hidden()
+        assert "Devolver ao ADM" in page.inner_text("#mov-titulo")
+        page.fill("#form-mov textarea[name=justificativa]", "Assunto é da Farmácia, não do Jurídico"); page.fill("#form-mov input[name=pin]", "3333")
+        page.click("#form-mov button[type=submit]"); esperar_toast(page, "devolvido ao ADM"); page.wait_for_timeout(700)
+        assert page.locator("#dlg-detalhe[open]").count() == 0 and page.locator("#tbody tr:has-text('2026-9001')").count() == 0
+        page.screenshot(path=str(OUT / "9a_devolvido_setor.png")); sair(page)
+        login(page, "adm"); page.locator("#tbody tr:has-text('2026-9001')").wait_for()
+        assert "Devolvido ao ADM" in page.inner_text("#tbody tr:has-text('2026-9001')")
+        page.click("#atalhos [data-alerta=devolvidos]"); page.wait_for_timeout(500); assert page.locator("#tbody tr[data-id]").count() == 1
+        assert "(1)" in page.inner_text("#atalhos [data-alerta=devolvidos]")
+        page.click("#tbody tr:has-text('2026-9001')"); page.locator("#dlg-detalhe[open]").wait_for()
+        assert "Aguarda novo encaminhamento" in page.inner_text("#detalhe-corpo") and page.locator("[data-acao=setor]").count() == 0
+        page.screenshot(path=str(OUT / "9b_devolvido_adm.png"))
+        page.click("[data-acao=reencaminhar]"); page.locator("#form-mov select[name=setor] option", has_text="Farmácia").wait_for(state="attached")
+        page.select_option("#form-mov select[name=setor]", label="Farmácia")
+        page.fill("#form-mov textarea[name=justificativa]", "Reencaminhado ao setor correto"); page.fill("#form-mov input[name=pin]", "2222")
+        page.click("#form-mov button[type=submit]"); esperar_toast(page, "reencaminhado"); page.wait_for_timeout(700)
+        txt = page.inner_text("#detalhe-corpo"); assert "Farmácia" in txt and "Devolvido ao ADM" in txt and "Reencaminhado" in txt, txt
+        page.screenshot(path=str(OUT / "9c_reencaminhado.png")); page.click("#detalhe-corpo [data-fechar]"); sair(page)
+        login(page, "farmacia"); page.locator("#tbody tr:has-text('2026-9001')").wait_for(); sair(page)
+        assert psql("select count(*) from public.movimentacoes") == "2"
         login(page, "gestor")
         # layout móvel
         page.set_viewport_size({"width": 390, "height": 800}); page.click("[data-aba=protocolos]"); page.wait_for_timeout(300)

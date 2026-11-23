@@ -92,6 +92,14 @@
         </div>
       </div>
 
+      <div class="atalhos" id="atalhos" role="group" aria-label="Atalhos da lista">
+        <button type="button" class="atalho" data-alerta="">Todos</button>
+        <button type="button" class="atalho" data-alerta="meus" id="atalho-meus">Meus pendentes</button>
+        <button type="button" class="atalho" data-alerta="urgentes">Urgentes</button>
+        <button type="button" class="atalho" data-alerta="semana">Vencem em 7 dias</button>
+        <button type="button" class="atalho" data-alerta="devolvidos">Devolvidos<span class="n"></span></button>
+      </div>
+
       <div class="kpis" id="kpis">
         <button type="button" class="kpi k-total" data-status=""><span class="kpi-rot">Total no livro</span><strong id="k-total">–</strong><small id="k-hoje">&nbsp;</small></button>
         <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-rot">Aguardando ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
@@ -120,6 +128,10 @@
             <option value="vencidos">Prazo vencido</option>
             <option value="criticos">Vence em até 2 dias</option>
             <option value="sla">Parados além do tempo máximo</option>
+            <option value="meus">Meus pendentes</option>
+            <option value="urgentes">Urgentes em andamento</option>
+            <option value="semana">Vencem em até 7 dias</option>
+            <option value="devolvidos">Devolvidos ao ADM</option>
           </select>
         </label>
         <label>Ordenar
@@ -207,9 +219,6 @@
     <section id="painel-controle" hidden>
       <nav class="subabas" id="subabas" aria-label="Painel de controle">
         <button type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
-        <button type="button" class="subaba" data-sub="setores">Setores</button>
-        <button type="button" class="subaba" data-sub="parametros">Prazos e regras</button>
-        <button type="button" class="subaba" data-sub="feriados">Feriados</button>
         <button type="button" class="subaba" data-sub="sistema">Sistema</button>
       </nav>
 
@@ -234,17 +243,21 @@
         </div>
       </div>
 
-      <div id="sub-setores" class="sub" hidden>
-        <div class="barra"><button class="btn primario" type="button" id="set-novo">+ Novo setor</button></div>
-        <div class="tabela-wrap">
-          <table>
-            <thead><tr><th>Setor</th><th>Usuários ativos</th><th>Situação</th><th>Ações</th></tr></thead>
-            <tbody id="tbody-set"></tbody>
-          </table>
-        </div>
-      </div>
 
-      <div id="sub-parametros" class="sub" hidden>
+
+
+      <div id="sub-sistema" class="sub" hidden>
+        <nav class="sis-indice" id="sis-indice" aria-label="Seções do sistema">
+          <span>Ir para:</span>
+          <button type="button" data-ir="sis-parametros">Prazos e regras</button>
+          <button type="button" data-ir="sis-setores">Setores</button>
+          <button type="button" data-ir="sis-feriados">Feriados</button>
+          <button type="button" data-ir="sis-identidade">Identidade visual</button>
+          <button type="button" data-ir="sis-dados">Backup e retenção</button>
+          <button type="button" data-ir="sis-uso">Uso do sistema</button>
+        </nav>
+        <section class="sis-sec" id="sis-parametros" aria-labelledby="sis-parametros-t">
+          <h2 id="sis-parametros-t" tabindex="-1">Prazos e regras</h2>
         <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
         <form id="form-param" class="param-form" autocomplete="off" novalidate>
           <div id="param-corpo"></div>
@@ -255,9 +268,19 @@
             <button type="submit" class="btn primario" id="param-salvar" disabled>Salvar alterações</button>
           </div>
         </form>
-      </div>
-
-      <div id="sub-feriados" class="sub" hidden>
+        </section>
+        <section class="sis-sec" id="sis-setores" aria-labelledby="sis-setores-t">
+          <h2 id="sis-setores-t" tabindex="-1">Setores</h2>
+        <div class="barra"><button class="btn primario" type="button" id="set-novo">+ Novo setor</button></div>
+        <div class="tabela-wrap">
+          <table>
+            <thead><tr><th>Setor</th><th>Usuários ativos</th><th>Situação</th><th>Ações</th></tr></thead>
+            <tbody id="tbody-set"></tbody>
+          </table>
+        </div>
+        </section>
+        <section class="sis-sec" id="sis-feriados" aria-labelledby="sis-feriados-t">
+          <h2 id="sis-feriados-t" tabindex="-1">Feriados</h2>
         <form id="form-feriado" class="barra" autocomplete="off">
           <label>Data <input type="date" name="data" required></label>
           <label>Descrição <input type="text" name="descricao" maxlength="80" required placeholder="Ex.: Carnaval"></label>
@@ -270,12 +293,11 @@
             <tbody id="tbody-fer"></tbody>
           </table>
         </div>
-      </div>
-
-      <div id="sub-sistema" class="sub" hidden>
-        <form id="form-logo" class="cartao-cfg" autocomplete="off">
-          <h3>Identidade visual</h3>
-          <div class="logo-cfg">
+        </section>
+        <section class="sis-sec" id="sis-identidade" aria-labelledby="sis-identidade-t">
+          <h2 id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
+        <form id="form-logo" class="cartao-cfg sem-titulo" autocomplete="off">
+                    <div class="logo-cfg">
             <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true">+</span></div>
             <div class="logo-controles">
               <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
@@ -293,9 +315,11 @@
             </div>
           </div>
         </form>
-        <section class="cartao-cfg" id="cartao-dados" aria-labelledby="dados-tit">
-          <h3 id="dados-tit">Dados, backup e retenção</h3>
-          <p class="dica">O backup reúne protocolos, etapas e trilha em um arquivo JSON (sem as imagens das assinaturas). Faça-o antes de qualquer exclusão em massa.
+        </section>
+        <section class="sis-sec" id="sis-dados" aria-labelledby="sis-dados-t">
+          <h2 id="sis-dados-t" tabindex="-1">Backup e retenção</h2>
+        <section class="cartao-cfg" id="cartao-dados" >
+                    <p class="dica">O backup reúne protocolos, etapas e trilha em um arquivo JSON (sem as imagens das assinaturas). Faça-o antes de qualquer exclusão em massa.
             A consulta de retenção apenas informa o que já passou do prazo de guarda; a exclusão continua sendo um ato do gestor, com justificativa e PIN.</p>
           <div class="logo-linha">
             <button type="button" class="btn primario" id="btn-backup">Baixar backup (JSON)</button>
@@ -307,8 +331,12 @@
           <p class="verificacao" id="ret-resultado" role="status"></p>
           <p class="dica" id="versao-schema"></p>
         </section>
+        </section>
+        <section class="sis-sec" id="sis-uso" aria-labelledby="sis-uso-t">
+          <h2 id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
+        </section>
       </div>
     </section>
   </main>
@@ -510,6 +538,28 @@
     <div class="modal-acoes">
       <button type="button" class="btn sec" data-fechar>Cancelar</button>
       <button type="submit" class="btn primario">Salvar prazo</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-mov">
+  <form id="form-mov" class="modal-corpo" autocomplete="off">
+    <h2 id="mov-titulo">Reencaminhar protocolo</h2>
+    <p class="dica" id="mov-ajuda"></p>
+    <div class="resumo-doc"><strong id="mov-numero"></strong><span id="mov-atual"></span></div>
+    <label id="lbl-mov-setor">Novo setor de destino
+      <select name="setor"><option value="">Selecione o setor…</option></select>
+    </label>
+    <label>Justificativa (obrigatória)
+      <textarea name="justificativa" rows="2" minlength="10" maxlength="500" required></textarea>
+    </label>
+    <label>PIN de <strong class="eu"></strong>
+      <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
+    </label>
+    <p class="erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario" id="mov-ok">Reencaminhar</button>
     </div>
   </form>
 </dialog>

@@ -459,3 +459,23 @@ main:focus { outline: none; }
 .mfa-qr-linha { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-bottom: .75rem; }
 .mfa-qr-linha img { background: #fff; border: 1px solid var(--borda, #d5dde5); border-radius: 8px; padding: 6px; }
 .mfa-qr-linha code { word-break: break-all; font-size: .95rem; user-select: all; }
+
+/* atalhos da lista e devolução */
+.atalhos { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem; }
+.atalho { border: 1px solid var(--borda); background: var(--cartao); border-radius: 999px; padding: .35rem .9rem; font-size: .85rem; font-weight: 700; color: var(--suave); cursor: pointer; }
+.atalho:hover { border-color: var(--azul-esc); color: var(--azul-esc); }
+.atalho.sel { background: var(--azul-esc); border-color: var(--azul-esc); color: #fff; }
+.chip.devolvido { background: var(--erro-bg); color: var(--erro); }
+.aviso-devolvido { background: var(--ambar-bg); color: var(--ambar); border: 1px solid var(--borda); border-radius: var(--raio); padding: .6rem .9rem; font-weight: 700; margin-bottom: .8rem; }
+
+/* aba Sistema: seções em sequência, com índice */
+.sis-indice { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; position: sticky; top: 0; z-index: 3; background: var(--fundo, #f4f7fa); padding: .4rem 0; }
+.sis-indice span { font-size: .82rem; font-weight: 700; color: var(--suave); margin-right: .2rem; }
+.sis-indice button { border: 1px solid var(--borda); background: var(--cartao); border-radius: 999px; padding: .3rem .8rem; font-size: .82rem; font-weight: 700; color: var(--azul-esc); cursor: pointer; }
+.sis-indice button:hover { background: var(--azul-esc); color: #fff; }
+.sis-sec { display: grid; gap: .8rem; align-content: start; scroll-margin-top: 3.2rem; }
+.sis-sec > h2 { font-size: 1.1rem; margin: 0; padding-bottom: .3rem; border-bottom: 2px solid var(--borda); color: var(--azul-esc); }
+.sis-sec > h2:focus { outline: none; }
+.sis-sec .sub, .sis-sec .barra { margin: 0; }
+.cartao-cfg.sem-titulo { padding-top: 1rem; }
+#sub-sistema { gap: 1.6rem; }

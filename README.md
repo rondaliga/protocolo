@@ -60,9 +60,9 @@ legacy/                    versão Python anterior (referência)
    **Por fim, rode `supabase/04_logo_horas_exclusoes.sql`** (logo, formatos de hora, salvar parâmetros de uma vez e exclusões — seção 4D).
    **Depois rode `supabase/05_melhorias.sql`** (versão do banco, índices, backup e retenção — seção 4E).
    **Por fim, rode `supabase/06_inatividade.sql`** (tempo de inatividade ajustável — seção 4E).
-   **Depois rode `supabase/07_mfa.sql`** (verificação em duas etapas — seção 4F).
+   **Depois rode `supabase/07_mfa.sql`** (verificação em duas etapas — seção 4F) **e `supabase/08_fluxo.sql`** (devolução, reencaminhamento, atalhos e lembretes em escada — seção 4G).
    **Ordem obrigatória: schema.sql → 02 → 03 → 04 → 05 → 06 → 07.** Se rodar um arquivo antigo de novo, rode os seguintes em seguida.
-   **Atalho:** cole `supabase/instalacao_completa.sql` (os sete arquivos na ordem certa, gerado por `scripts/gerar_instalacao.py`).
+   **Atalho:** cole `supabase/instalacao_completa.sql` (os oito arquivos na ordem certa, gerado por `scripts/gerar_instalacao.py`).
    Serve para instalação nova **e** para atualização, e pode ser executado quantas vezes quiser.
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
@@ -198,7 +198,7 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
 - **Usuários**: criar (e-mail, nome, papel, setor; senha e PIN provisórios gerados na tela), editar, **desativar/reativar**
   (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
   Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
-- **Setores**, **Prazos e regras** (parâmetros validados), **Feriados** (contam no cálculo de horas úteis) e **Sistema** (resumo).
+- Duas abas: **Usuários** e **Sistema**. A aba **Sistema** reúne, em sequência e com um índice "Ir para": Prazos e regras (parâmetros validados), Setores, Feriados (contam no cálculo de horas úteis), Identidade visual, Backup e retenção e Uso do sistema.
 - Tudo é gravado na trilha de auditoria.
 
 **Primeiro acesso**: o usuário entra com a senha provisória e é obrigado a definir a **própria senha** (10–72 caracteres, com letra
@@ -251,11 +251,11 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
 
 **Instalação e manutenção**
-- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 7 de 7") e é idempotente.
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 8 de 8") e é idempotente.
 - `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
 
 **Inatividade**
-- O tempo para o logout automático agora é **ajustável** em Painel → Prazos e regras → *Segurança da sessão* (de 5 min a 24 h; aceita `6h`, `6:00`, `90min`, `1,5`). O **padrão passou de 30 min para 6 horas** (`06_inatividade.sql`).
+- O tempo para o logout automático agora é **ajustável** em Painel → Sistema → Prazos e regras → *Segurança da sessão* (de 5 min a 24 h; aceita `6h`, `6:00`, `90min`, `1,5`). O **padrão passou de 30 min para 6 horas** (`06_inatividade.sql`).
 - Vale para todos os perfis no próximo login (o gestor que altera já o recebe na hora). A mudança fica na trilha. Ao voltar de suspensão do computador, o navegador confere o tempo imediatamente.
 - A contagem é feita no navegador (cliques, teclas e rolagem reiniciam). `IDLE_MINUTES` no `config.js` virou apenas reserva caso o banco não responda.
 - Atenção: quanto maior o tempo, maior a janela em que um computador deixado aberto continua logado. Em computador compartilhado (portaria), considere um valor menor.
@@ -288,12 +288,20 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 
 ### Checklist de implantação
 1. Projeto Supabase criado (São Paulo) e cadastro público desligado.
-2. `instalacao_completa.sql` executado; painel mostra "7 de 7".
+2. `instalacao_completa.sql` executado; painel mostra "8 de 8".
 3. Variáveis do GitHub (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `UNIDADE`, `TIMEZONE`) e Pages em "GitHub Actions".
 4. Primeiro gestor criado e senha/PIN trocados no primeiro acesso.
 5. Rate limits do Supabase revisados; baixar um backup e conferir a trilha ("Trilha íntegra").
 5b. Segredos `SUPABASE_DB_URL` e `BACKUP_PASSPHRASE` cadastrados e um backup de teste rodado em *Actions*; o gestor ativou as **2 etapas** (e há pelo menos dois gestores antes de ligar a exigência).
 6. Fazer um protocolo de teste com os quatro perfis.
+
+## 4G. Devolução, reencaminhamento, atalhos e lembretes em escada (migração 08)
+
+- **Devolver ao ADM** (botão no detalhe, para o setor de destino ou o gestor): o documento não é do setor. Exige justificativa (10 a 500 caracteres) e PIN; o destino é zerado, o ADM é avisado e o protocolo aparece como *Devolvido ao ADM* nas pendências dele. Nenhum setor consegue receber um protocolo devolvido.
+- **Reencaminhar** (ADM ou gestor, enquanto o protocolo aguarda o setor): troca o setor de destino com justificativa e PIN, avisa o novo setor e reinicia o tempo máximo. O setor anterior deixa de ver o protocolo.
+- Cada movimentação fica em histórico imutável (tabela `movimentacoes`), aparece no *Histórico de alterações* do protocolo, na trilha (`PROTOCOLO_DEVOLVIDO`, `PROTOCOLO_REENCAMINHADO`) e no backup.
+- **Atalhos da lista:** Todos · Meus pendentes · Urgentes · Vencem em 7 dias · Devolvidos. O último filtro usado é lembrado por usuário, neste navegador.
+- **Lembretes em escada** (Sistema → Prazos e regras → *Lembretes quando o tempo máximo é ultrapassado*): 1º aviso ao responsável quando o tempo estoura; 2º aviso após `sla_lembrete_min` (padrão 4 h úteis); aviso também ao gestor após `sla_escalada_min` (padrão 8 h úteis). Sem e-mail cadastrado no responsável, o aviso vai direto ao gestor. A escada recomeça a cada novo encaminhamento.
 
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 
@@ -318,7 +326,7 @@ O botão "Baixar backup (JSON)" do painel continua útil para uma cópia imediat
 
 ### Verificação em duas etapas (TOTP) — recomendada ao gestor
 - Qualquer usuário pode ativar em **2 etapas** (botão no topo): escaneia o QR Code num aplicativo autenticador (Google/Microsoft Authenticator, Authy, 2FAS…) e confirma com o primeiro código. Depois, todo login pede a senha **e** o código.
-- **Exigência para o gestor:** Painel → Prazos e regras → *Regras gerais* → "Exigir verificação em duas etapas…". Ao ligar, cada gestor é obrigado a cadastrar no próximo acesso (e não consegue desativar).
+- **Exigência para o gestor:** Painel → Sistema → Prazos e regras → *Regras gerais* → "Exigir verificação em duas etapas…". Ao ligar, cada gestor é obrigado a cadastrar no próximo acesso (e não consegue desativar).
 - **Proteção no servidor, não só na tela:** quem tem o fator ativo e ainda não digitou o código (sessão `aal1`) é tratado como não autenticado pelo banco — a função `public._uid()` (que substitui `auth.uid()` em todas as políticas e funções) devolve vazio. Mesmo chamando a API direto com a senha, nada é lido nem alterado. O teste automatizado prova isso.
 - Cadastro, QR e conferência do código são do **Supabase Auth (MFA/TOTP)**: nenhum segredo passa pelo nosso código. No painel do Supabase, confira *Authentication → Sign In / Providers → Multi-Factor Authentication* com **TOTP** ativado (padrão).
 - **Perdeu o celular?** Outro gestor usa Painel → Usuários → **Redefinir 2 etapas** (pede o PIN do gestor; derruba as sessões; fica na trilha). Se o único gestor perdeu o aparelho, rode no SQL Editor: `select public.admin_resetar_mfa('gestor@exemplo.com');` e entre só com a senha. **Ao ligar a exigência, garanta que existe mais de um gestor.**

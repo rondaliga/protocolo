@@ -62,6 +62,7 @@
   const tipoHtml = (x) => (x.tipo === 'judicial' ? '<span class="tipo-jud">JUDICIAL</span>' : '') + (x.urgente ? '<span class="tipo-urg">URGENTE</span>' : '');
   const ondeHtml = (x) => {
     if (x.status === 'concluido') return `${chip(x.status)}<small>Entregue a ${esc(x.e3_setor || '')}</small>`;
+    if (x.devolvido) return `<span class="chip devolvido">Devolvido ao ADM</span><small class="${x.sla_estourado ? 'atraso' : ''}">Devolvido por ${esc(x.devolvido_por || 'o setor')} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' ⚠ além do tempo' : ''}</small>`;
     const quem = x.status === 'pendente_adm' ? 'Aguardando o ADM' : `Aguardando ${esc(x.setor_destino_nome || 'o setor')}`;
     return `${chip(x.status)}<small class="${x.sla_estourado ? 'atraso' : ''}">${quem} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' ⚠ além do tempo' : ''}</small>`;
   };
@@ -320,6 +321,7 @@
     $('#usr-nome').textContent = perfil.nome;
     $('#usr-papel').textContent = PAPEL[perfil.papel] + (perfil.setor ? ` · ${perfil.setor}` : '');
     $('#btn-novo').hidden = !['portaria', 'gestor'].includes(perfil.papel);
+    $('#atalho-meus').hidden = perfil.papel === 'portaria';
     $('#btn-aba-auditoria').hidden = perfil.papel !== 'gestor';
     $('#btn-aba-painel').hidden = perfil.papel !== 'gestor';
     $$('.eu').forEach((e) => { e.textContent = perfil.nome; });
@@ -374,6 +376,7 @@
     $('#k-crit').textContent = `${r.criticos} vencem em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
     const opc = $('select[name="alerta"] option[value="criticos"]'); if (opc) opc.textContent = `Vence em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
     $('#k-sla').textContent = r.sla_estourado;
+    const bd = $('#atalhos [data-alerta="devolvidos"] .n'); if (bd) bd.textContent = r.devolvidos ? ` (${r.devolvidos})` : '';
     const fx = $('#faixa-alertas');
     fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
     fx.textContent = `⚠ Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`} e ${r.sla_estourado === 1 ? '1 parada' : `${r.sla_estourado} paradas`} além do tempo máximo de recebimento.`;
@@ -405,6 +408,7 @@
     $('#pg-ant').disabled = estado.pagina <= 1; $('#pg-prox').disabled = estado.pagina >= paginas;
     $('#contagem').textContent = pl(r.total, 'registro', 'registros');
     const ff = $('#form-filtros');
+    $$('#atalhos .atalho').forEach((b) => b.classList.toggle('sel', (b.dataset.alerta || '') === ff.alerta.value && ff.status.value === '' && !ff.q.value && !ff.data_ini.value && !ff.data_fim.value));
     $$('.kpi').forEach((k) => k.classList.toggle('sel', k.dataset.alerta
       ? ff.alerta.value === k.dataset.alerta : (k.dataset.status === ff.status.value && ff.alerta.value === '' && ff.status.value !== '')));
   }
@@ -433,7 +437,9 @@
   function renderDetalhe(p) {
     const papel = estado.perfil.papel;
     const podeAdm = ['adm', 'gestor'].includes(papel) && p.status === 'pendente_adm';
-    const podeSetor = ['super_setor', 'gestor'].includes(papel) && p.status === 'pendente_setor';
+    const podeSetor = ['super_setor', 'gestor'].includes(papel) && p.status === 'pendente_setor' && !p.devolvido;
+    const podeReenc = ['adm', 'gestor'].includes(papel) && p.status === 'pendente_setor';
+    const podeDevolver = ['super_setor', 'gestor'].includes(papel) && p.status === 'pendente_setor' && !p.devolvido;
     const podeCorrigir = ['portaria', 'adm', 'gestor'].includes(papel);
     const podePrazo = ['adm', 'gestor'].includes(papel) && p.status !== 'concluido';
     const linhas = etapasCompletas(p).map((e) => {
@@ -459,6 +465,8 @@
       txt: `de “${c.anterior}” para “${c.nova}”`, just: c.justificativa }));
     (p.prazos || []).forEach((h) => hist.push({ em: h.ajustado_em, tit: 'Prazo ajustado', usr: h.usuario,
       txt: `${h.anterior ? data(`${h.anterior}T12:00:00`) : 'sem prazo'} → ${data(`${h.novo}T12:00:00`)}`, just: h.justificativa }));
+    (p.movimentacoes || []).forEach((m) => hist.push({ em: m.em, tit: m.tipo === 'devolvido' ? 'Devolvido ao ADM' : 'Reencaminhado', usr: m.usuario,
+      txt: m.tipo === 'devolvido' ? `devolvido pelo setor ${m.de || '—'}` : `${m.de ? `de ${m.de} ` : ''}para ${m.para}`, just: m.justificativa }));
     hist.sort((x, y) => String(x.em).localeCompare(String(y.em)));
     const histHtml = hist.length ? `<section class="det-sec"><h3>Histórico de alterações</h3><ul class="hist">
       ${hist.map((h) => `<li><div class="hist-cab"><b>${esc(h.tit)}</b><span>${data(h.em)} ${hora(h.em)} · ${esc(h.usr)}</span></div>
@@ -466,7 +474,7 @@
     const tipoTxt = `${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' · URGENTE' : ''}`;
     $('#detalhe-corpo').innerHTML = `
       <div class="det-topo"><div><span class="det-rot">Protocolo</span><h2>${esc(p.numero)}</h2>
-        <div class="det-chips">${chip(p.status)}${p.urgente ? '<span class="chip urg">URGENTE</span>' : ''}</div></div>
+        <div class="det-chips">${p.devolvido ? '<span class="chip devolvido">Devolvido ao ADM</span>' : chip(p.status)}${p.urgente ? '<span class="chip urg">URGENTE</span>' : ''}</div></div>
         <button class="btn mini sec" type="button" data-fechar>Fechar ✕</button></div>
       <section class="det-sec"><h3>Documento</h3>
         <div class="resumo-doc"><span>${esc(p.descricao)}</span>
@@ -475,10 +483,11 @@
           <div><dt>Tipo</dt><dd>${esc(tipoTxt)}</dd></div>
           <div><dt>Prazo</dt><dd>${p.prazo_data ? `${data(`${p.prazo_data}T12:00:00`)} ${prazoHtml(p)}` : 'Sem prazo informado'}</dd></div>
           <div><dt>Onde está agora</dt><dd>${p.status === 'concluido' ? `Entregue (${esc(p.e3_setor || '')})` : ondeHtml(p)}</dd></div>
-          <div><dt>Setor de destino</dt><dd>${esc(p.setor_destino_nome || (p.status === 'pendente_adm' ? 'Será definido pelo ADM' : '—'))}</dd></div>
+          <div><dt>Setor de destino</dt><dd>${esc(p.setor_destino_nome || (p.status === 'pendente_adm' ? 'Será definido pelo ADM' : p.devolvido ? 'A definir pelo ADM' : '—'))}</dd></div>
           <div><dt>Registrado em</dt><dd>${data(p.created_at)} às ${hora(p.created_at, true)}</dd></div>
           <div><dt>Registrado por</dt><dd>${esc(p.e1_usuario || '—')}</dd></div>
         </dl></section>
+      ${p.devolvido ? `<div class="aviso-devolvido" role="status">Devolvido ao ADM${p.devolvido_por ? ` pelo setor ${esc(p.devolvido_por)}` : ''}. Aguarda novo encaminhamento.</div>` : ''}
       ${(p.fotos || []).length ? '<section class="det-sec"><h3>Foto do envelope ou da capa</h3><div id="det-fotos"></div></section>' : ''}
       <section class="det-sec"><h3>Tramitação</h3><ol class="linha-tempo">${linhas}</ol></section>
       ${histHtml}
@@ -486,6 +495,8 @@
         <div class="det-rodape-sec">
           ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir">Corrigir descrição</button>' : ''}
           ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
+          ${podeReenc ? `<button class="btn sec" type="button" data-acao="reencaminhar">${p.devolvido ? 'Reencaminhar a um setor' : 'Reencaminhar'}</button>` : ''}
+          ${podeDevolver ? '<button class="btn sec" type="button" data-acao="devolver">Devolver ao ADM</button>' : ''}
           <button class="btn sec" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
           ${papel === 'gestor' ? '<button class="btn perigo" type="button" data-acao="excluir">Excluir protocolo</button>' : ''}
         </div>
@@ -646,6 +657,27 @@
       }).catch((e) => erroForm(f, e.message));
     }
     prepararAssinatura('conf'); $('#dlg-confirmar').showModal(); f.pin.focus();
+  }
+
+  const MOV = {
+    reencaminhar: { titulo: 'Reencaminhar protocolo', ajuda: 'Use quando o documento foi encaminhado ao setor errado. O novo setor é avisado, o tempo máximo de recebimento recomeça e a justificativa fica registrada no histórico.',
+      botao: 'Reencaminhar', ok: (r) => `${r.numero}: reencaminhado e novo setor avisado.`, lugar: 'Ex.: documento é da Farmácia, não do Jurídico' },
+    devolver: { titulo: 'Devolver ao ADM', ajuda: 'Use quando o documento não é do seu setor. O ADM é avisado para reencaminhá-lo ao setor correto. A justificativa e o responsável ficam registrados.',
+      botao: 'Devolver ao ADM', ok: (r) => `${r.numero}: devolvido ao ADM.`, lugar: 'Ex.: assunto é da Farmácia, não do nosso setor' },
+  };
+  function abrirMover(modo) {
+    const p = estado.aberto, f = $('#form-mov'), m = MOV[modo];
+    f.reset(); erroForm(f, ''); f.dataset.id = String(p.id); f.dataset.modo = modo;
+    $('#mov-titulo').textContent = m.titulo; $('#mov-ajuda').textContent = m.ajuda; $('#mov-ok').textContent = m.botao;
+    f.justificativa.placeholder = m.lugar; $('#mov-numero').textContent = p.numero;
+    $('#mov-atual').textContent = p.devolvido ? `Devolvido por ${p.devolvido_por || 'o setor'}.` : `Setor atual: ${p.setor_destino_nome || '—'}.`;
+    const lbl = $('#lbl-mov-setor'); lbl.hidden = modo !== 'reencaminhar'; f.setor.required = modo === 'reencaminhar';
+    if (modo === 'reencaminhar') {
+      carregarSetores().then((l) => {
+        f.setor.innerHTML = '<option value="">Selecione o setor…</option>' + l.filter((x) => x.id !== p.setor_destino_id).map((x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`).join('');
+      }).catch((e) => erroForm(f, e.message));
+    }
+    $('#dlg-mov').showModal(); (modo === 'reencaminhar' ? f.setor : f.justificativa).focus();
   }
 
   function abrirPrazo() {
@@ -918,6 +950,10 @@
     f.addEventListener('submit', (ev) => ev.preventDefault());
     f.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(aplicar, 300); });
     ['status', 'alerta', 'ordem', 'data_ini', 'data_fim'].forEach((n) => f[n].addEventListener('change', aplicar));
+    $('#atalhos').addEventListener('click', (ev) => {
+      const b = ev.target.closest('.atalho'); if (!b) return;
+      f.reset(); f.alerta.value = b.dataset.alerta || ''; f.ordem.value = f.alerta.value === 'semana' ? 'prazo' : 'recentes'; aplicar();
+    });
     $('#btn-limpar').addEventListener('click', () => { f.reset(); aplicar(); });
     $('#kpis').addEventListener('click', (ev) => { const k = ev.target.closest('.kpi');
       if (k) { f.status.value = k.dataset.status || ''; f.alerta.value = k.dataset.alerta || ''; aplicar(); } });
@@ -930,7 +966,7 @@
 
     $('#detalhe-corpo').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-acao]'); if (!b) return;
-      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, excluir: abrirExclusao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
+      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, reencaminhar: () => abrirMover('reencaminhar'), devolver: () => abrirMover('devolver'), excluir: abrirExclusao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
     });
     document.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-fechar]')) ev.target.closest('dialog').close();
@@ -1042,6 +1078,17 @@
         p_justificativa: form.justificativa.value, p_pin: form.pin.value }), async () => {
         $('#dlg-prazo').close(); toast('Prazo ajustado e registrado no histórico.');
         await abrirDetalhe(form.dataset.id); await recarregar(); await verificarAlertas(false);
+      });
+    });
+
+    $('#form-mov').addEventListener('submit', (ev) => {
+      ev.preventDefault(); const form = ev.target, modo = form.dataset.modo, m = MOV[modo];
+      enviar(form, () => (modo === 'reencaminhar'
+        ? rpc('reencaminhar_protocolo', { p_protocolo_id: Number(form.dataset.id), p_setor_id: Number(form.setor.value), p_justificativa: form.justificativa.value, p_pin: form.pin.value })
+        : rpc('devolver_protocolo', { p_protocolo_id: Number(form.dataset.id), p_justificativa: form.justificativa.value, p_pin: form.pin.value })), async (r) => {
+        $('#dlg-mov').close(); toast(m.ok(r));
+        if (modo === 'devolver' && estado.perfil.papel === 'super_setor') { $('#dlg-detalhe').close(); estado.aberto = null; } else await abrirDetalhe(form.dataset.id);
+        await recarregar(); await verificarAlertas(false);
       });
     });
 
