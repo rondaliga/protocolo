@@ -62,9 +62,9 @@
   const tipoHtml = (x) => (x.tipo === 'judicial' ? '<span class="tipo-jud">JUDICIAL</span>' : '') + (x.urgente ? '<span class="tipo-urg">URGENTE</span>' : '');
   const ondeHtml = (x) => {
     if (x.status === 'concluido') return `${chip(x.status)}<small>Entregue a ${esc(x.e3_setor || '')}</small>`;
-    if (x.devolvido) return `<span class="chip devolvido">Devolvido ao ADM</span><small class="${x.sla_estourado ? 'atraso' : ''}">Devolvido por ${esc(x.devolvido_por || 'o setor')} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' ⚠ além do tempo' : ''}</small>`;
+    if (x.devolvido) return `<span class="chip devolvido">Devolvido ao ADM</span><small class="${x.sla_estourado ? 'atraso' : ''}">Devolvido por ${esc(x.devolvido_por || 'o setor')} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' · além do tempo' : ''}</small>`;
     const quem = x.status === 'pendente_adm' ? 'Aguardando o ADM' : `Aguardando ${esc(x.setor_destino_nome || 'o setor')}`;
-    return `${chip(x.status)}<small class="${x.sla_estourado ? 'atraso' : ''}">${quem} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' ⚠ além do tempo' : ''}</small>`;
+    return `${chip(x.status)}<small class="${x.sla_estourado ? 'atraso' : ''}">${quem} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' · além do tempo' : ''}</small>`;
   };
 
   const estado = { sessao: null, perfil: null, aba: 'protocolos', pagina: 1, porPagina: 25, total: 0,
@@ -379,7 +379,7 @@
     const bd = $('#atalhos [data-alerta="devolvidos"] .n'); if (bd) bd.textContent = r.devolvidos ? ` (${r.devolvidos})` : '';
     const fx = $('#faixa-alertas');
     fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
-    fx.textContent = `⚠ Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`} e ${r.sla_estourado === 1 ? '1 parada' : `${r.sla_estourado} paradas`} além do tempo máximo de recebimento.`;
+    fx.innerHTML = `${window.ico('alerta')}<span>Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`} e ${r.sla_estourado === 1 ? '1 parada' : `${r.sla_estourado} paradas`} além do tempo máximo de recebimento.</span>`;
   }
 
   function celulaEtapa(em, user, setor) {
@@ -395,7 +395,7 @@
     $('#tbody').innerHTML = r.itens.map((x) => `
       <tr data-id="${esc(x.id)}" tabindex="0" class="${x.semaforo === 'vencido' && x.status !== 'concluido' ? 'linha-vencida' : x.sla_estourado ? 'linha-sla' : ''}">
         <td class="num">${esc(x.numero)}</td>
-        <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag">📷</span>' : ''}</td>
+        <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag" data-ico="camera" title="Com foto" aria-label="Com foto"></span>' : ''}</td>
         <td class="onde">${ondeHtml(x)}</td>
         <td class="prazo">${prazoHtml(x)}</td>
         <td>${celulaEtapa(x.e1_em, x.e1_usuario)}</td>
@@ -449,9 +449,9 @@
       const png = pngSeguro(e.assinatura_png);
       const ass = png
         ? `<img class="ass-img" src="${png}" alt="Assinatura de ${esc(e.usuario)}"><span class="et-sub">${esc(ASSIN_ROTULO[e.assinatura_tipo] || 'Assinatura')}</span>`
-        : '<span class="pin-ok">✔ Ciência confirmada por PIN</span><span class="et-sub">sem imagem de assinatura</span>';
+        : '<span class="pin-ok" data-ico="ok">Ciência confirmada por PIN</span><span class="et-sub">sem imagem de assinatura</span>';
       return `<li class="feito"><span class="no">${e.n}</span><div class="et-corpo">
-        <div class="et-cab"><b>${esc(e.nome)}</b><span class="et-st">✔ Concluída</span></div>
+        <div class="et-cab"><b>${esc(e.nome)}</b><span class="et-st" data-ico="ok">Concluída</span></div>
         <dl class="et-meta">
           <div><dt>Data e hora</dt><dd>${data(e.recebido_em)} às ${hora(e.recebido_em, true)}</dd></div>
           <div><dt>Responsável</dt><dd>${esc(e.usuario)}</dd></div>
@@ -475,7 +475,7 @@
     $('#detalhe-corpo').innerHTML = `
       <div class="det-topo"><div><span class="det-rot">Protocolo</span><h2>${esc(p.numero)}</h2>
         <div class="det-chips">${p.devolvido ? '<span class="chip devolvido">Devolvido ao ADM</span>' : chip(p.status)}${p.urgente ? '<span class="chip urg">URGENTE</span>' : ''}</div></div>
-        <button class="btn mini sec" type="button" data-fechar>Fechar ✕</button></div>
+        <button class="btn mini sec" type="button" data-fechar data-ico="fechar">Fechar</button></div>
       <section class="det-sec"><h3>Documento</h3>
         <div class="resumo-doc"><span>${esc(p.descricao)}</span>
           ${p.n_correcoes ? `<div class="original">Descrição original: ${esc(p.descricao_original)}</div>` : ''}</div>
@@ -493,16 +493,16 @@
       ${histHtml}
       <div class="det-rodape">
         <div class="det-rodape-sec">
-          ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir">Corrigir descrição</button>' : ''}
-          ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo">Ajustar prazo</button>' : ''}
-          ${podeReenc ? `<button class="btn sec" type="button" data-acao="reencaminhar">${p.devolvido ? 'Reencaminhar a um setor' : 'Reencaminhar'}</button>` : ''}
-          ${podeDevolver ? '<button class="btn sec" type="button" data-acao="devolver">Devolver ao ADM</button>' : ''}
-          <button class="btn sec" type="button" data-acao="imprimir">Imprimir ficha / PDF</button>
-          ${papel === 'gestor' ? '<button class="btn perigo" type="button" data-acao="excluir">Excluir protocolo</button>' : ''}
+          ${podeCorrigir ? '<button class="btn sec" type="button" data-acao="corrigir" data-ico="editar">Corrigir descrição</button>' : ''}
+          ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo" data-ico="cronometro">Ajustar prazo</button>' : ''}
+          ${podeReenc ? `<button class="btn sec" type="button" data-acao="reencaminhar" data-ico="encaminhar">${p.devolvido ? 'Reencaminhar a um setor' : 'Reencaminhar'}</button>` : ''}
+          ${podeDevolver ? '<button class="btn sec" type="button" data-acao="devolver" data-ico="devolver">Devolver ao ADM</button>' : ''}
+          <button class="btn sec" type="button" data-acao="imprimir" data-ico="imprimir">Imprimir ficha / PDF</button>
+          ${papel === 'gestor' ? '<button class="btn perigo" type="button" data-acao="excluir" data-ico="lixeira">Excluir protocolo</button>' : ''}
         </div>
         <div class="det-rodape-pri">
-          ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm">Confirmar recebimento — ADM</button>' : ''}
-          ${podeSetor ? `<button class="btn primario" type="button" data-acao="setor">Confirmar recebimento — ${papel === 'gestor' ? esc(p.setor_destino_nome || 'Setor') : 'Setor'}</button>` : ''}
+          ${podeAdm ? '<button class="btn primario" type="button" data-acao="adm" data-ico="ok">Confirmar recebimento — ADM</button>' : ''}
+          ${podeSetor ? `<button class="btn primario" type="button" data-acao="setor" data-ico="ok">Confirmar recebimento — ${papel === 'gestor' ? esc(p.setor_destino_nome || 'Setor') : 'Setor'}</button>` : ''}
         </div>
       </div>`;
     carregarFotos(p);
@@ -721,7 +721,7 @@
     const ok = typeof src === 'string' && (LOGO_OK.test(src) || src === 'assets/logo.png');
     estado.logo = ok; estado.logoSrc = ok ? src : null;
     $$('img.logo').forEach((i) => { if (ok) { i.src = src; i.hidden = false; } else { i.hidden = true; i.removeAttribute('src'); } });
-    const fav = $('link[rel=icon]'); if (fav) fav.href = ok ? src : 'data:,';
+    const fav = $('link[rel=icon]'); if (fav) { fav.href = ok ? src : 'assets/icone.svg'; fav.type = ok ? '' : 'image/svg+xml'; }
   }
   const LOGO_CACHE = 'protocolo.logo';
   async function carregarIdentidade() {
@@ -739,7 +739,7 @@
 
   // ------------------------------------------------------------------ IMPRESSÃO (livro e ficha)
   function cabecalhoImpressao(subtitulo) {
-    const marca = estado.logoSrc ? `<img src="${estado.logoSrc}" alt="">` : '<span class="p-cruz">+</span>';
+    const marca = estado.logoSrc ? `<img src="${estado.logoSrc}" alt="">` : '<img src="assets/icone.svg" alt="">';
     return `<div class="p-cab"><div>${marca}</div>
       <div class="p-tit"><h1>LIVRO DE PROTOCOLO</h1>
         <div class="s">RECEBIMENTO E TRAMITAÇÃO DE DEMANDAS JUDICIAIS E CORRESPONDÊNCIAS</div>
@@ -902,7 +902,7 @@
     $('#vazio-sino').hidden = itens.length > 0;
     $('#lista-sino').innerHTML = itens.map((x) => `<li data-id="${esc(x.id)}" class="${x.sla_estourado || x.semaforo === 'vencido' ? 'alerta' : ''}">
       <strong>${esc(x.numero)}</strong> ${tipoHtml(x)} ${esc(TXT_SINO[r.papel] || '')}
-      <small>${x.aguardando_desde ? esc(ha(x.aguardando_desde)) : ''}${x.prazo_data ? ` · prazo ${data(x.prazo_data + 'T12:00:00')} (${esc(diasTxt(x))})` : ''}${x.sla_estourado ? ' · ⚠ além do tempo' : ''}</small></li>`).join('');
+      <small>${x.aguardando_desde ? esc(ha(x.aguardando_desde)) : ''}${x.prazo_data ? ` · prazo ${data(x.prazo_data + 'T12:00:00')} (${esc(diasTxt(x))})` : ''}${x.sla_estourado ? ' · além do tempo' : ''}</small></li>`).join('');
     const ids = new Set(itens.map((x) => `${x.id}:${x.status}`));
     if (avisar && estado.alertasVistos) {
       const novos = itens.filter((x) => !estado.alertasVistos.has(`${x.id}:${x.status}`));
@@ -910,7 +910,7 @@
         bipe(); $('#btn-sino').classList.add('toca'); setTimeout(() => $('#btn-sino').classList.remove('toca'), 2000);
         const txt = novos.length === 1 ? `Protocolo ${novos[0].numero}${novos[0].urgente ? ' URGENTE' : ''} ${TXT_SINO[r.papel] || 'precisa de atenção'}.`
           : `${novos.length} protocolos novos precisam da sua atenção.`;
-        toast(`🔔 ${txt}`);
+        toast(txt);
         try { if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('Livro de Protocolo', { body: txt, tag: 'protocolo' }); } catch { /* ignora */ }
       }
     }
@@ -1140,7 +1140,7 @@
       try {
         const r = await rpc('verificar_auditoria');
         out.className = `verificacao ${r.ok ? 'ok' : 'falha'}`;
-        out.textContent = r.ok ? `✔ Trilha íntegra (${r.total} eventos verificados).` : `✖ ADULTERAÇÃO DETECTADA a partir do evento nº ${r.primeira_falha_id}.`;
+        out.innerHTML = r.ok ? `${window.ico('ok')} Trilha íntegra (${r.total} eventos verificados).` : `${window.ico('alerta')} ADULTERAÇÃO DETECTADA a partir do evento nº ${Number(r.primeira_falha_id)}.`;
       } catch (e) { toast(e.message, true); }
     });
 

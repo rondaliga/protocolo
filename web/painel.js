@@ -166,7 +166,7 @@
         const r = await rpc('verificar_auditoria');
         if (out.textContent && !out.dataset.selo) return;            // o gestor já pediu a verificação manual
         out.dataset.selo = '1'; out.className = `verificacao ${r.ok ? 'ok' : 'falha'}`;
-        out.textContent = r.ok ? `✔ Trilha íntegra (${r.total} eventos verificados).` : `✖ ADULTERAÇÃO DETECTADA a partir do evento nº ${r.primeira_falha_id}.`;
+        out.innerHTML = r.ok ? `${window.ico('ok')} Trilha íntegra (${r.total} eventos verificados).` : `${window.ico('alerta')} ADULTERAÇÃO DETECTADA a partir do evento nº ${Number(r.primeira_falha_id)}.`;
       } catch { /* a verificação manual mostra o erro */ }
     }
 
@@ -303,11 +303,11 @@
         <td>${situacao(u)}</td>
         <td class="nw">${u.ultimo_acesso ? `${data(u.ultimo_acesso)} ${hora(u.ultimo_acesso)}` : 'nunca entrou'}</td>
         <td class="acoes" data-uid="${esc(u.user_id)}">
-          <button type="button" class="btn mini sec" data-uacao="editar">Editar</button>
-          ${u.user_id === eu ? '' : `<button type="button" class="btn mini sec" data-uacao="senha">Nova senha</button>
-          <button type="button" class="btn mini sec" data-uacao="pin">Novo PIN</button>`}
-          ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear">Desbloquear PIN</button>' : ''}
-          ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa">Redefinir 2 etapas</button>' : ''}
+          <button type="button" class="btn mini sec" data-uacao="editar" data-ico="editar">Editar</button>
+          ${u.user_id === eu ? '' : `<button type="button" class="btn mini sec" data-uacao="senha" data-ico="chave">Nova senha</button>
+          <button type="button" class="btn mini sec" data-uacao="pin" data-ico="pin">Novo PIN</button>`}
+          ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear" data-ico="cadeado">Desbloquear PIN</button>' : ''}
+          ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa" data-ico="escudo">Redefinir 2 etapas</button>' : ''}
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini ${u.ativo ? 'perigo' : 'sec'}" data-uacao="ativo">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}
         </td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
     }
@@ -370,7 +370,7 @@
     function renderSetores() {
       $('#tbody-set').innerHTML = painel.setores.map((s) => `<tr class="${s.ativo ? '' : 'inativo'}"><td><strong>${esc(s.nome)}</strong></td><td>${esc(s.usuarios)}</td>
         <td>${s.ativo ? '<span class="sit ok">Ativo</span>' : '<span class="sit off">Inativo</span>'}</td>
-        <td class="acoes"><button type="button" class="btn mini sec" data-sid="${esc(s.id)}">Editar</button></td></tr>`).join('')
+        <td class="acoes"><button type="button" class="btn mini sec" data-sid="${esc(s.id)}" data-ico="editar">Editar</button></td></tr>`).join('')
         || '<tr><td colspan="4" class="vazio">Nenhum setor cadastrado.</td></tr>';
     }
     function abrirSetor(s) {
@@ -484,7 +484,7 @@
       try {
         const l = await rpc('painel_listar_feriados');
         $('#tbody-fer').innerHTML = l.map((x) => `<tr><td>${dia(x.data)}</td><td>${esc(x.descricao)}</td>
-          <td class="acoes"><button type="button" class="btn mini sec" data-fdata="${esc(x.data)}">Remover</button></td></tr>`).join('')
+          <td class="acoes"><button type="button" class="btn mini sec" data-fdata="${esc(x.data)}" data-ico="lixeira">Remover</button></td></tr>`).join('')
           || '<tr><td colspan="3" class="vazio">Nenhum feriado cadastrado.</td></tr>';
       } catch (e) { falha(e); }
     }

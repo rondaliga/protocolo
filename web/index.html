@@ -10,9 +10,11 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Livro de Protocolo · CECAN – LNRCC</title>
   <meta name="theme-color" content="#1f4e6e">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="assets/icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
+  <script src="icones.js"></script>
   <script src="tema.js"></script>
 </head>
 <body>
@@ -30,7 +32,7 @@
 <section id="view-login" class="centro" hidden>
   <button class="btn mini sec tema-login btn-tema" type="button" data-tema-btn>Tema: Automático</button>
   <form id="form-login" class="cartao-login" autocomplete="on">
-    <div class="marca marca-grande"><img class="logo" alt="" hidden><span class="cruz" aria-hidden="true">+</span></div>
+    <div class="marca marca-grande"><img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span></div>
     <h1>Livro de Protocolo</h1>
     <p class="sub">Recebimento e tramitação de demandas judiciais e correspondências</p>
     <p class="unidade" data-unidade></p>
@@ -41,7 +43,7 @@
       <input name="senha" type="password" autocomplete="current-password" required>
     </label>
     <p class="erro" id="login-erro" role="alert" hidden></p>
-    <button class="btn primario largo" type="submit">Entrar</button>
+    <button data-ico="sair" class="btn primario largo" type="submit">Entrar</button>
     <p class="nota">Acesso restrito a usuários autorizados. Todas as ações ficam registradas em trilha de auditoria.</p>
   </form>
 </section>
@@ -51,42 +53,42 @@
   <a class="pular" href="#conteudo">Ir para o conteúdo</a>
   <header class="topo">
     <div class="marca">
-      <img class="logo" alt="" hidden><span class="cruz" aria-hidden="true">+</span>
+      <img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span>
       <div class="marca-txt"><strong>Livro de Protocolo</strong><span data-unidade></span></div>
     </div>
     <div class="usuario">
       <div class="usuario-txt"><strong id="usr-nome"></strong><span id="usr-papel"></span></div>
       <div class="sino-wrap">
         <button class="btn mini sino" id="btn-sino" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Pendências e avisos">
-          <span aria-hidden="true">🔔</span> Pendências <span class="sino-n" id="sino-n" hidden>0</span></button>
+          <span data-ico="sino"></span> Pendências <span class="sino-n" id="sino-n" hidden>0</span></button>
         <div class="sino-painel" id="painel-sino" hidden>
-          <h3>Precisam da sua atenção</h3>
+          <h3 data-ico="alerta">Precisam da sua atenção</h3>
           <ul id="lista-sino"></ul>
-          <p class="vazio-sino" id="vazio-sino">Nenhuma pendência. Tudo em dia. ✔</p>
+          <p class="vazio-sino" id="vazio-sino">Nenhuma pendência. Tudo em dia.</p>
           <div class="sino-rodape">
-            <button class="btn mini sec" type="button" id="btn-notif">Ativar avisos no computador</button>
+            <button data-ico="sino" class="btn mini sec" type="button" id="btn-notif">Ativar avisos no computador</button>
             <label class="sino-som"><input type="checkbox" id="chk-som" checked> Som</label>
           </div>
         </div>
       </div>
       <div class="sino-wrap conta-wrap">
-        <button class="btn mini" id="btn-conta" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu-conta">Minha conta <span aria-hidden="true">▾</span></button>
+        <button class="btn mini" id="btn-conta" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu-conta"><span data-ico="usuario"></span> Minha conta <span data-ico="seta"></span></button>
         <div class="menu-conta" id="menu-conta" role="menu" aria-label="Minha conta" hidden>
-          <button type="button" role="menuitem" id="btn-senha">Alterar senha</button>
-          <button type="button" role="menuitem" id="btn-pin">Alterar PIN</button>
-          <button type="button" role="menuitem" id="btn-mfa">Verificação em duas etapas</button>
+          <button type="button" role="menuitem" id="btn-senha"><span data-ico="cadeado"></span>Alterar senha</button>
+          <button type="button" role="menuitem" id="btn-pin"><span data-ico="pin"></span>Alterar PIN</button>
+          <button type="button" role="menuitem" id="btn-mfa"><span data-ico="escudo"></span>Verificação em duas etapas</button>
           <hr>
           <button type="button" role="menuitem" class="btn-tema" data-tema-btn>Tema: Automático</button>
         </div>
       </div>
-      <button class="btn mini" id="btn-sair" type="button">Sair</button>
+      <button class="btn mini" id="btn-sair" type="button"><span data-ico="sair"></span> Sair</button>
     </div>
   </header>
 
   <nav class="abas" id="abas" aria-label="Seções">
-    <button type="button" class="aba ativa" data-aba="protocolos">Protocolos</button>
-    <button type="button" class="aba" data-aba="auditoria" id="btn-aba-auditoria" hidden>Trilha de auditoria</button>
-    <button type="button" class="aba" data-aba="painel" id="btn-aba-painel" hidden>Painel de controle</button>
+    <button type="button" class="aba ativa" data-aba="protocolos" data-ico="livro">Protocolos</button>
+    <button type="button" class="aba" data-aba="auditoria" id="btn-aba-auditoria" data-ico="escudo" hidden>Trilha de auditoria</button>
+    <button type="button" class="aba" data-aba="painel" id="btn-aba-painel" data-ico="painel" hidden>Painel de controle</button>
   </nav>
 
   <main id="conteudo" tabindex="-1">
@@ -102,20 +104,20 @@
       </div>
 
       <div class="atalhos" id="atalhos" role="group" aria-label="Atalhos da lista">
-        <button type="button" class="atalho" data-alerta="">Todos</button>
-        <button type="button" class="atalho" data-alerta="meus" id="atalho-meus">Meus pendentes</button>
-        <button type="button" class="atalho" data-alerta="urgentes">Urgentes</button>
-        <button type="button" class="atalho" data-alerta="semana">Vencem em 7 dias</button>
-        <button type="button" class="atalho" data-alerta="devolvidos">Devolvidos<span class="n"></span></button>
+        <button data-ico="camadas" type="button" class="atalho" data-alerta="">Todos</button>
+        <button data-ico="usuario" type="button" class="atalho" data-alerta="meus" id="atalho-meus">Meus pendentes</button>
+        <button data-ico="raio" type="button" class="atalho" data-alerta="urgentes">Urgentes</button>
+        <button data-ico="calendario" type="button" class="atalho" data-alerta="semana">Vencem em 7 dias</button>
+        <button data-ico="devolver" type="button" class="atalho" data-alerta="devolvidos">Devolvidos<span class="n"></span></button>
       </div>
 
       <div class="kpis" id="kpis">
-        <button type="button" class="kpi k-total" data-status=""><span class="kpi-rot">Total no livro</span><strong id="k-total">–</strong><small id="k-hoje">&nbsp;</small></button>
-        <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-rot">Aguardando ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
-        <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-rot">Aguardando setor de destino</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
-        <button type="button" class="kpi k-ok" data-status="concluido"><span class="kpi-rot">Concluído / Entregue</span><strong id="k-ok">–</strong><small>fluxo completo</small></button>
-        <button type="button" class="kpi k-venc" data-alerta="vencidos"><span class="kpi-rot">Prazo vencido</span><strong id="k-venc">–</strong><small id="k-crit">&nbsp;</small></button>
-        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no tempo máximo</small></button>
+        <button type="button" class="kpi k-total" data-status=""><span class="kpi-ico" data-ico="camadas"></span><span class="kpi-rot">Total no livro</span><strong id="k-total">–</strong><small id="k-hoje">&nbsp;</small></button>
+        <button type="button" class="kpi k-adm" data-status="pendente_adm"><span class="kpi-ico" data-ico="relogio"></span><span class="kpi-rot">Aguardando ADM</span><strong id="k-adm">–</strong><small>aguardando 2º recebimento</small></button>
+        <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-ico" data-ico="usuario"></span><span class="kpi-rot">Aguardando setor de destino</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
+        <button type="button" class="kpi k-ok" data-status="concluido"><span class="kpi-ico" data-ico="ok"></span><span class="kpi-rot">Concluído / Entregue</span><strong id="k-ok">–</strong><small>fluxo completo</small></button>
+        <button type="button" class="kpi k-venc" data-alerta="vencidos"><span class="kpi-ico" data-ico="alerta"></span><span class="kpi-rot">Prazo vencido</span><strong id="k-venc">–</strong><small id="k-crit">&nbsp;</small></button>
+        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-ico" data-ico="cronometro"></span><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no tempo máximo</small></button>
       </div>
 
       <form class="filtros" id="form-filtros" role="search">
@@ -151,12 +153,12 @@
         </label>
         <label>De <input type="date" name="data_ini"></label>
         <label>Até <input type="date" name="data_fim"></label>
-        <button class="btn sec" type="button" id="btn-limpar">Limpar</button>
+        <button data-ico="fechar" class="btn sec" type="button" id="btn-limpar">Limpar</button>
       </form>
 
       <div class="barra">
-        <button class="btn primario" type="button" id="btn-novo" hidden>+ Novo registro (Portaria)</button>
-        <button class="btn" type="button" id="btn-imprimir-livro">Imprimir livro / PDF</button>
+        <button class="btn primario" type="button" id="btn-novo" hidden><span data-ico="mais"></span> Novo registro (Portaria)</button>
+        <button class="btn" type="button" id="btn-imprimir-livro"><span data-ico="imprimir"></span> Imprimir livro / PDF</button>
         <span class="espaco"></span>
         <span class="contagem" id="contagem" role="status"></span>
       </div>
@@ -172,9 +174,9 @@
         <p class="vazio" id="vazio" hidden>Nenhum protocolo encontrado.</p>
       </div>
       <div class="paginacao">
-        <button class="btn sec" type="button" id="pg-ant">‹ Anterior</button>
+        <button data-ico="esq" class="btn sec" type="button" id="pg-ant">Anterior</button>
         <span id="pg-info"></span>
-        <button class="btn sec" type="button" id="pg-prox">Próxima ›</button>
+        <button class="btn sec" type="button" id="pg-prox">Próxima <span data-ico="dir"></span></button>
       </div>
     </section>
 
@@ -200,14 +202,14 @@
         <label>Usuário <input type="text" name="usuario" maxlength="100" placeholder="Nome"></label>
         <label>De <input type="date" name="data_ini"></label>
         <label>Até <input type="date" name="data_fim"></label>
-        <button type="button" class="btn sec" id="aud-limpar">Limpar</button>
+        <button data-ico="fechar" type="button" class="btn sec" id="aud-limpar">Limpar</button>
       </form>
       <div class="barra">
-        <button class="btn primario" type="button" id="btn-verificar">Verificar integridade da trilha</button>
-        <button class="btn sec" type="button" id="aud-xlsx">Exportar Excel (.xlsx)</button>
-        <button class="btn sec" type="button" id="aud-csv">Exportar CSV</button>
-        <button class="btn sec" type="button" id="aud-imprimir">Imprimir / PDF</button>
-        <button class="btn perigo" type="button" id="aud-excluir">Excluir registros…</button>
+        <button data-ico="escudo" class="btn primario" type="button" id="btn-verificar">Verificar integridade da trilha</button>
+        <button data-ico="planilha" class="btn sec" type="button" id="aud-xlsx">Exportar Excel (.xlsx)</button>
+        <button data-ico="baixar" class="btn sec" type="button" id="aud-csv">Exportar CSV</button>
+        <button data-ico="imprimir" class="btn sec" type="button" id="aud-imprimir">Imprimir / PDF</button>
+        <button data-ico="lixeira" class="btn perigo" type="button" id="aud-excluir">Excluir registros…</button>
         <span id="resultado-verificacao" class="verificacao" role="status"></span>
         <span class="contagem" id="aud-contagem" role="status"></span>
       </div>
@@ -218,24 +220,24 @@
         </table>
       </div>
       <div class="paginacao">
-        <button class="btn sec" type="button" id="aud-ant">‹ Anterior</button>
+        <button data-ico="esq" class="btn sec" type="button" id="aud-ant">Anterior</button>
         <span id="aud-pg"></span>
-        <button class="btn sec" type="button" id="aud-prox">Próxima ›</button>
+        <button class="btn sec" type="button" id="aud-prox">Próxima <span data-ico="dir"></span></button>
       </div>
     </section>
 
     <!-- ---------- Painel de controle (somente gestor) ---------- -->
     <section id="painel-controle" hidden>
       <nav class="subabas" id="subabas" aria-label="Painel de controle">
-        <button type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
-        <button type="button" class="subaba" data-sub="sistema">Sistema</button>
-        <button type="button" class="subaba" data-sub="cadastros">Setores e feriados</button>
-        <button type="button" class="subaba" data-sub="backup">Backup e retenção</button>
+        <button data-ico="pessoas" type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
+        <button data-ico="sliders" type="button" class="subaba" data-sub="sistema">Sistema</button>
+        <button data-ico="predio" type="button" class="subaba" data-sub="cadastros">Setores e feriados</button>
+        <button data-ico="nuvem" type="button" class="subaba" data-sub="backup">Backup e retenção</button>
       </nav>
 
       <div id="sub-usuarios" class="sub">
         <div class="barra">
-          <button class="btn primario" type="button" id="usr-novo">+ Novo usuário</button>
+          <button data-ico="usuariomais" class="btn primario" type="button" id="usr-novo">Novo usuário</button>
           <input type="search" id="usr-busca" placeholder="Buscar por nome ou e-mail" maxlength="100" aria-label="Buscar usuário">
           <select id="usr-filtro-papel" aria-label="Filtrar por perfil">
             <option value="">Todos os perfis</option><option value="portaria">Portaria</option><option value="adm">ADM</option>
@@ -260,26 +262,26 @@
       <div id="sub-sistema" class="sub" hidden>
         <nav class="sis-indice" id="sis-indice" aria-label="Seções do sistema">
           <span>Ir para:</span>
-          <button type="button" data-ir="sis-identidade">Identidade visual</button>
-          <button type="button" data-ir="sis-parametros">Prazos e regras</button>
-          <button type="button" data-ir="sis-uso">Uso do sistema</button>
+          <button data-ico="palette" type="button" data-ir="sis-identidade">Identidade visual</button>
+          <button data-ico="cronometro" type="button" data-ir="sis-parametros">Prazos e regras</button>
+          <button data-ico="grafico" type="button" data-ir="sis-uso">Uso do sistema</button>
         </nav>
         <section class="sis-sec" id="sis-identidade" aria-labelledby="sis-identidade-t">
-          <h2 id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
+          <h2 data-ico="palette" id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
         <form id="form-logo" class="cartao-cfg sem-titulo" autocomplete="off">
                     <div class="logo-cfg">
-            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true">+</span></div>
+            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span></div>
             <div class="logo-controles">
               <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
                 Aceita PNG, JPEG ou WebP; a imagem é reduzida automaticamente. Prefira fundo transparente ou branco.</p>
               <input type="file" id="logo-arquivo" accept="image/png,image/jpeg,image/webp" hidden>
               <div class="logo-linha">
-                <button type="button" class="btn sec" id="logo-escolher">Escolher imagem…</button>
+                <button data-ico="galeria" type="button" class="btn sec" id="logo-escolher">Escolher imagem…</button>
                 <label class="logo-pin">PIN do gestor
                   <input class="pin" id="logo-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" autocomplete="off">
                 </label>
-                <button type="submit" class="btn primario" id="logo-salvar" disabled>Salvar logotipo</button>
-                <button type="button" class="btn sec" id="logo-restaurar">Restaurar padrão</button>
+                <button data-ico="salvar" type="submit" class="btn primario" id="logo-salvar" disabled>Salvar logotipo</button>
+                <button data-ico="volta" type="button" class="btn sec" id="logo-restaurar">Restaurar padrão</button>
               </div>
               <p class="erro" role="alert" hidden></p>
             </div>
@@ -287,28 +289,28 @@
         </form>
         </section>
         <section class="sis-sec" id="sis-parametros" aria-labelledby="sis-parametros-t">
-          <h2 id="sis-parametros-t" tabindex="-1">Prazos e regras</h2>
+          <h2 data-ico="cronometro" id="sis-parametros-t" tabindex="-1">Prazos e regras</h2>
         <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
         <form id="form-param" class="param-form" autocomplete="off" novalidate>
           <div id="param-corpo"></div>
           <div class="param-barra">
             <span id="param-estado" class="param-estado" role="status">Nenhuma alteração pendente.</span>
             <span class="erro" id="param-erro" role="alert" hidden></span>
-            <button type="button" class="btn sec" id="param-descartar" disabled>Descartar</button>
-            <button type="submit" class="btn primario" id="param-salvar" disabled>Salvar alterações</button>
+            <button data-ico="volta" type="button" class="btn sec" id="param-descartar" disabled>Descartar</button>
+            <button data-ico="salvar" type="submit" class="btn primario" id="param-salvar" disabled>Salvar alterações</button>
           </div>
         </form>
         </section>
         <section class="sis-sec" id="sis-uso" aria-labelledby="sis-uso-t">
-          <h2 id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
+          <h2 data-ico="grafico" id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
         </section>
       </div>
       <div id="sub-cadastros" class="sub" hidden>
         <section class="sis-sec" id="sis-setores" aria-labelledby="sis-setores-t">
-          <h2 id="sis-setores-t" tabindex="-1">Setores</h2>
-        <div class="barra"><button class="btn primario" type="button" id="set-novo">+ Novo setor</button></div>
+          <h2 data-ico="predio" id="sis-setores-t" tabindex="-1">Setores</h2>
+        <div class="barra"><button data-ico="mais" class="btn primario" type="button" id="set-novo">Novo setor</button></div>
         <div class="tabela-wrap">
           <table>
             <thead><tr><th>Setor</th><th>Usuários ativos</th><th>Situação</th><th>Ações</th></tr></thead>
@@ -317,11 +319,11 @@
         </div>
         </section>
         <section class="sis-sec" id="sis-feriados" aria-labelledby="sis-feriados-t">
-          <h2 id="sis-feriados-t" tabindex="-1">Feriados</h2>
+          <h2 data-ico="calendario" id="sis-feriados-t" tabindex="-1">Feriados</h2>
         <form id="form-feriado" class="barra" autocomplete="off">
           <label>Data <input type="date" name="data" required></label>
           <label>Descrição <input type="text" name="descricao" maxlength="80" required placeholder="Ex.: Carnaval"></label>
-          <button class="btn primario" type="submit">Adicionar feriado</button>
+          <button data-ico="calendario" class="btn primario" type="submit">Adicionar feriado</button>
           <span class="erro" role="alert" hidden></span>
         </form>
         <div class="tabela-wrap">
@@ -334,16 +336,16 @@
       </div>
       <div id="sub-backup" class="sub" hidden>
         <section class="sis-sec" id="sis-dados" aria-labelledby="sis-dados-t">
-          <h2 id="sis-dados-t" tabindex="-1">Backup e retenção</h2>
+          <h2 data-ico="nuvem" id="sis-dados-t" tabindex="-1">Backup e retenção</h2>
         <section class="cartao-cfg" id="cartao-dados" >
                     <p class="dica">O backup reúne protocolos, etapas e trilha em um arquivo JSON (sem as imagens das assinaturas). Faça-o antes de qualquer exclusão em massa.
             A consulta de retenção apenas informa o que já passou do prazo de guarda; a exclusão continua sendo um ato do gestor, com justificativa e PIN.</p>
           <div class="logo-linha">
-            <button type="button" class="btn primario" id="btn-backup">Baixar backup (JSON)</button>
+            <button data-ico="baixar" type="button" class="btn primario" id="btn-backup">Baixar backup (JSON)</button>
             <label class="logo-pin">Prazo de guarda
               <span class="un-in"><input type="number" id="ret-meses" min="1" max="600" step="1" value="60"><i>meses</i></span>
             </label>
-            <button type="button" class="btn sec" id="btn-retencao">Consultar retenção</button>
+            <button data-ico="busca" type="button" class="btn sec" id="btn-retencao">Consultar retenção</button>
           </div>
           <p class="verificacao" id="ret-resultado" role="status"></p>
           <p class="dica" id="versao-schema"></p>
@@ -356,21 +358,21 @@
 <!-- ============ MODAL: NOVO REGISTRO (1ª etapa) ============ -->
 <dialog id="dlg-inatividade" role="alertdialog" aria-labelledby="inat-tit" aria-describedby="inat-txt">
   <div class="modal-corpo">
-    <h2 id="inat-tit">Você ainda está aí?</h2>
+    <h2 data-ico="relogio" id="inat-tit">Você ainda está aí?</h2>
     <p id="inat-txt">Por falta de uso, sua sessão será encerrada em <strong id="inat-seg">60</strong> s. O que não foi registrado será perdido
       (o rascunho de um novo protocolo é guardado neste navegador).</p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" id="inat-sair">Sair agora</button>
-      <button type="button" class="btn primario" id="inat-continuar">Continuar conectado</button>
+      <button data-ico="sair" type="button" class="btn sec" id="inat-sair">Sair agora</button>
+      <button data-ico="ok" type="button" class="btn primario" id="inat-continuar">Continuar conectado</button>
     </div>
   </div>
 </dialog>
 
 <dialog id="dlg-novo">
   <form id="form-novo" class="modal-corpo" autocomplete="off">
-    <h2>Novo registro — 1ª etapa (Portaria)</h2>
+    <h2 data-ico="livro">Novo registro — 1ª etapa (Portaria)</h2>
     <p class="aviso-rascunho" id="rascunho-aviso" role="status" hidden>Rascunho recuperado (salvo em <span id="rascunho-quando"></span>). A assinatura e o PIN nunca são guardados.
-      <button type="button" class="btn sec mini" id="rascunho-descartar">Descartar rascunho</button></p>
+      <button data-ico="lixeira" type="button" class="btn sec mini" id="rascunho-descartar">Descartar rascunho</button></p>
     <div class="aviso" role="note">
       <strong>Orientação de preenchimento:</strong>
       Preencher um registro por documento. Informar data e hora em cada etapa e colher a assinatura de quem recebe.
@@ -394,9 +396,9 @@
     <fieldset class="foto-box">
       <legend>Foto do envelope ou da capa <span id="foto-obrig"></span></legend>
       <div class="foto-acoes">
-        <button type="button" class="btn sec" id="btn-foto-camera">📷 Tirar foto</button>
-        <button type="button" class="btn sec" id="btn-foto-arquivo">🖼 Escolher da galeria</button>
-        <button type="button" class="btn sec mini" id="btn-foto-remover" hidden>Remover foto</button>
+        <button data-ico="camera" type="button" class="btn sec" id="btn-foto-camera">Tirar foto</button>
+        <button data-ico="galeria" type="button" class="btn sec" id="btn-foto-arquivo">Escolher da galeria</button>
+        <button data-ico="lixeira" type="button" class="btn sec mini" id="btn-foto-remover" hidden>Remover foto</button>
       </div>
       <input type="file" id="inp-foto-camera" accept="image/*" capture="environment" hidden>
       <input type="file" name="foto" id="inp-foto" accept="image/*" hidden>
@@ -407,8 +409,8 @@
     <fieldset data-assinatura="novo"></fieldset>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Registrar recebimento</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="ok">Registrar recebimento</button>
     </div>
   </form>
 </dialog>
@@ -416,7 +418,7 @@
 <!-- ============ MODAL: EXCLUIR PROTOCOLO (gestor) ============ -->
 <dialog id="dlg-excluir">
   <form id="form-excluir" class="modal-corpo" autocomplete="off">
-    <h2>Excluir protocolo <span id="exc-numero"></span></h2>
+    <h2 data-ico="lixeira">Excluir protocolo <span id="exc-numero"></span></h2>
     <div class="aviso perigo" role="note">
       <strong>Esta ação é definitiva.</strong> Serão removidos o protocolo, as etapas e assinaturas, as correções, o histórico de prazo e a foto.
       O registro da exclusão (quem, quando e a justificativa) permanece na trilha de auditoria.
@@ -431,8 +433,8 @@
     <label class="chk neutro"><input type="checkbox" name="ciente" required> Entendo que não é possível desfazer</label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn perigo">Excluir definitivamente</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn perigo" data-ico="lixeira">Excluir definitivamente</button>
     </div>
   </form>
 </dialog>
@@ -440,7 +442,7 @@
 <!-- ============ MODAL: EXCLUIR REGISTROS DA TRILHA (gestor) ============ -->
 <dialog id="dlg-limpar-trilha">
   <form id="form-limpar-trilha" class="modal-corpo" autocomplete="off">
-    <h2>Excluir registros da trilha</h2>
+    <h2 data-ico="lixeira">Excluir registros da trilha</h2>
     <div class="aviso perigo" role="note">
       <strong>Esta ação é definitiva.</strong> Recomenda-se exportar o CSV antes. A exclusão em si fica registrada na trilha
       (quem, quando, quantos registros e a justificativa) e a verificação de integridade passa a valer para os registros que restarem.
@@ -463,8 +465,8 @@
     <label class="chk neutro"><input type="checkbox" name="ciente" required> Entendo que não é possível desfazer</label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn perigo">Excluir definitivamente</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn perigo" data-ico="lixeira">Excluir definitivamente</button>
     </div>
   </form>
 </dialog>
@@ -472,13 +474,13 @@
 <!-- ============ MODAL: CÂMERA (computador com webcam; no celular abre a câmera do aparelho) ============ -->
 <dialog id="dlg-camera">
   <div class="modal-corpo">
-    <h2>Fotografar o envelope ou a capa</h2>
+    <h2 data-ico="camera">Fotografar o envelope ou a capa</h2>
     <video id="cam-video" class="cam-video" autoplay playsinline muted></video>
     <p class="dica">Enquadre somente a capa ou o envelope. Não fotografe o conteúdo do documento.</p>
     <p class="erro" id="cam-erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="button" class="btn primario" id="btn-capturar">📷 Capturar</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button data-ico="camera" type="button" class="btn primario" id="btn-capturar">Capturar</button>
     </div>
   </div>
 </dialog>
@@ -489,7 +491,7 @@
 <!-- ============ MODAL: CONFIRMAR RECEBIMENTO (2ª e 3ª) ============ -->
 <dialog id="dlg-confirmar">
   <form id="form-confirmar" class="modal-corpo" autocomplete="off">
-    <h2 id="conf-titulo"></h2>
+    <h2 data-ico="ok" id="conf-titulo"></h2>
     <div class="resumo-doc"><strong id="conf-numero"></strong><span id="conf-desc"></span></div>
     <p class="dica" id="conf-setor-info" hidden></p>
     <label id="lbl-destino" hidden>Setor de destino (para onde o documento vai agora)
@@ -499,8 +501,8 @@
     <p class="dica">Data e hora do recebimento serão registrados automaticamente pelo servidor.</p>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Confirmar recebimento</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="ok">Confirmar recebimento</button>
     </div>
   </form>
 </dialog>
@@ -508,7 +510,7 @@
 <!-- ============ MODAL: CORRIGIR DESCRIÇÃO ============ -->
 <dialog id="dlg-correcao">
   <form id="form-correcao" class="modal-corpo" autocomplete="off">
-    <h2>Corrigir descrição</h2>
+    <h2 data-ico="editar">Corrigir descrição</h2>
     <p class="dica">A descrição original é preservada. A correção fica registrada com seu nome, data/hora e justificativa.</p>
     <div class="resumo-doc"><strong id="corr-numero"></strong><span id="corr-atual"></span></div>
     <label>Nova descrição
@@ -523,8 +525,8 @@
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Registrar correção</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="editar">Registrar correção</button>
     </div>
   </form>
 </dialog>
@@ -532,7 +534,7 @@
 <!-- ============ MODAL: AJUSTAR PRAZO ============ -->
 <dialog id="dlg-prazo">
   <form id="form-prazo" class="modal-corpo" autocomplete="off">
-    <h2>Ajustar prazo</h2>
+    <h2 data-ico="cronometro">Ajustar prazo</h2>
     <p class="dica">Use quando o prazo real constar no documento. O prazo anterior, a justificativa e o responsável ficam registrados.</p>
     <div class="resumo-doc"><strong id="prazo-numero"></strong><span id="prazo-atual"></span></div>
     <label>Novo prazo (data limite)
@@ -547,15 +549,15 @@
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Salvar prazo</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="salvar">Salvar prazo</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-mov">
   <form id="form-mov" class="modal-corpo" autocomplete="off">
-    <h2 id="mov-titulo">Reencaminhar protocolo</h2>
+    <h2 data-ico="encaminhar" id="mov-titulo">Reencaminhar protocolo</h2>
     <p class="dica" id="mov-ajuda"></p>
     <div class="resumo-doc"><strong id="mov-numero"></strong><span id="mov-atual"></span></div>
     <label id="lbl-mov-setor">Novo setor de destino
@@ -569,8 +571,8 @@
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario" id="mov-ok">Reencaminhar</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button data-ico="encaminhar" type="submit" class="btn primario" id="mov-ok">Reencaminhar</button>
     </div>
   </form>
 </dialog>
@@ -578,7 +580,7 @@
 <!-- ============ MODAL: ALTERAR PIN ============ -->
 <dialog id="dlg-pin">
   <form id="form-pin" class="modal-corpo" autocomplete="off">
-    <h2>Alterar meu PIN</h2>
+    <h2 data-ico="pin">Alterar meu PIN</h2>
     <p class="dica">O PIN (4 a 6 dígitos) é a sua assinatura nos recebimentos. Não o compartilhe.</p>
     <label>PIN atual
       <input class="pin" name="atual" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
@@ -588,8 +590,8 @@
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Salvar novo PIN</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="salvar">Salvar novo PIN</button>
     </div>
   </form>
 </dialog>
@@ -598,7 +600,7 @@
 <!-- ============ MODAL: USUÁRIO (criar / editar) ============ -->
 <dialog id="dlg-usuario">
   <form id="form-usuario" class="modal-corpo" autocomplete="off">
-    <h2 id="usr-titulo">Novo usuário</h2>
+    <h2 data-ico="usuariomais" id="usr-titulo">Novo usuário</h2>
     <label>E-mail (será o usuário de acesso)
       <input type="email" name="email" maxlength="200" required autocomplete="off">
     </label>
@@ -620,11 +622,11 @@
     </div>
     <div id="bloco-credenciais">
       <label>Senha provisória
-        <span class="com-botao"><input type="text" name="senha" maxlength="72" autocomplete="off" spellcheck="false"><button type="button" class="btn sec mini" data-gerar="senha">Gerar</button></span>
+        <span class="com-botao"><input type="text" name="senha" maxlength="72" autocomplete="off" spellcheck="false"><button data-ico="gerar" type="button" class="btn sec mini" data-gerar="senha">Gerar</button></span>
         <small class="dica" id="dica-senha">Mínimo de 10 caracteres, com letras e números. O usuário será obrigado a trocá-la no primeiro acesso.</small>
       </label>
       <label>PIN provisório (4 a 6 dígitos)
-        <span class="com-botao"><input type="text" name="pin_novo" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off"><button type="button" class="btn sec mini" data-gerar="pin">Gerar</button></span>
+        <span class="com-botao"><input type="text" name="pin_novo" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off"><button data-ico="gerar" type="button" class="btn sec mini" data-gerar="pin">Gerar</button></span>
       </label>
     </div>
     <label>Seu PIN de gestor (confirma a ação)
@@ -632,8 +634,8 @@
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Salvar usuário</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="salvar">Salvar usuário</button>
     </div>
   </form>
 </dialog>
@@ -641,18 +643,18 @@
 <!-- ============ MODAL: REDEFINIR SENHA / PIN ============ -->
 <dialog id="dlg-reset">
   <form id="form-reset" class="modal-corpo" autocomplete="off">
-    <h2 id="reset-titulo"></h2>
+    <h2 data-ico="chave" id="reset-titulo"></h2>
     <p class="dica" id="reset-info"></p>
     <label><span id="reset-rotulo"></span>
-      <span class="com-botao"><input type="text" name="valor" maxlength="72" required autocomplete="off" spellcheck="false"><button type="button" class="btn sec mini" id="reset-gerar">Gerar</button></span>
+      <span class="com-botao"><input type="text" name="valor" maxlength="72" required autocomplete="off" spellcheck="false"><button data-ico="gerar" type="button" class="btn sec mini" id="reset-gerar">Gerar</button></span>
     </label>
     <label>Seu PIN de gestor (confirma a ação)
       <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Confirmar</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="ok">Confirmar</button>
     </div>
   </form>
 </dialog>
@@ -660,15 +662,15 @@
 <!-- ============ MODAL: ATIVAR / DESATIVAR ============ -->
 <dialog id="dlg-ativo">
   <form id="form-ativo" class="modal-corpo" autocomplete="off">
-    <h2 id="ativo-titulo"></h2>
+    <h2 data-ico="usuario" id="ativo-titulo"></h2>
     <p class="dica" id="ativo-info"></p>
     <label>Seu PIN de gestor (confirma a ação)
       <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off">
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Confirmar</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="ok">Confirmar</button>
     </div>
   </form>
 </dialog>
@@ -676,13 +678,13 @@
 <!-- ============ MODAL: CREDENCIAIS GERADAS (exibidas uma única vez) ============ -->
 <dialog id="dlg-credencial">
   <div class="modal-corpo">
-    <h2>Entregue os dados de acesso</h2>
+    <h2 data-ico="chave">Entregue os dados de acesso</h2>
     <p class="dica">Estas informações <strong>não serão exibidas novamente</strong>. Entregue-as pessoalmente ou por um canal seguro.
       No primeiro acesso o usuário será obrigado a trocar a senha e o PIN.</p>
     <dl class="credencial" id="cred-dados"></dl>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" id="cred-copiar">Copiar</button>
-      <button type="button" class="btn primario" data-fechar>Já anotei / entreguei</button>
+      <button data-ico="copiar" type="button" class="btn sec" id="cred-copiar">Copiar</button>
+      <button data-ico="ok" type="button" class="btn primario" data-fechar>Já anotei / entreguei</button>
     </div>
   </div>
 </dialog>
@@ -690,13 +692,13 @@
 <!-- ============ MODAL: SETOR ============ -->
 <dialog id="dlg-setor">
   <form id="form-setor" class="modal-corpo" autocomplete="off">
-    <h2 id="setor-titulo">Setor</h2>
+    <h2 data-ico="predio" id="setor-titulo">Setor</h2>
     <label>Nome do setor <input type="text" name="nome" maxlength="80" required></label>
     <label class="chk neutro"><input type="checkbox" name="ativo" checked> Setor ativo (aparece na escolha do destino)</label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Salvar setor</button>
+      <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="salvar">Salvar setor</button>
     </div>
   </form>
 </dialog>
@@ -704,29 +706,29 @@
 <!-- ============ MODAL: MINHA CONTA (senha / primeiro acesso) ============ -->
 <dialog id="dlg-mfa" role="alertdialog" aria-labelledby="mfa-tit">
   <form id="form-mfa" class="modal-corpo" autocomplete="off">
-    <h2 id="mfa-tit">Verificação em duas etapas</h2>
+    <h2 data-ico="escudo" id="mfa-tit">Verificação em duas etapas</h2>
     <p class="dica">Abra o aplicativo autenticador no celular e digite o código de 6 dígitos do <strong>Livro de Protocolo</strong>.</p>
     <label>Código
       <input class="codigo-mfa" name="codigo" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" autocomplete="one-time-code" required>
     </label>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" id="mfa-cancelar">Cancelar e sair</button>
-      <button type="submit" class="btn primario">Verificar</button>
+      <button data-ico="sair" type="button" class="btn sec" id="mfa-cancelar">Cancelar e sair</button>
+      <button type="submit" class="btn primario" data-ico="ok">Verificar</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-mfa-cad">
   <form id="form-mfa-cad" class="modal-corpo" autocomplete="off">
-    <h2 id="mfa-cad-tit">Verificação em duas etapas</h2>
+    <h2 data-ico="escudo" id="mfa-cad-tit">Verificação em duas etapas</h2>
     <p class="dica" id="mfa-cad-info"></p>
     <div id="mfa-cad-ativo" hidden>
-      <p class="aviso-rascunho">✔ Ativa nesta conta. Ao entrar, além da senha, será pedido o código do aplicativo autenticador.</p>
-      <button type="button" class="btn sec" id="mfa-desativar">Desativar verificação em duas etapas</button>
+      <p class="aviso-rascunho" data-ico="ok">Ativa nesta conta. Ao entrar, além da senha, será pedido o código do aplicativo autenticador.</p>
+      <button data-ico="cadeado" type="button" class="btn sec" id="mfa-desativar">Desativar verificação em duas etapas</button>
     </div>
     <div id="mfa-cad-novo" hidden>
-      <button type="button" class="btn primario" id="mfa-gerar">Gerar código QR</button>
+      <button data-ico="gerar" type="button" class="btn primario" id="mfa-gerar">Gerar código QR</button>
       <div id="mfa-cad-qr" hidden>
         <ol class="mfa-passos">
           <li>Instale um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, Authy, 2FAS…).</li>
@@ -744,15 +746,15 @@
     </div>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" id="mfa-cad-fechar">Fechar</button>
-      <button type="submit" class="btn primario" id="mfa-ativar" hidden>Ativar</button>
+      <button data-ico="fechar" type="button" class="btn sec" id="mfa-cad-fechar">Fechar</button>
+      <button data-ico="ok" type="submit" class="btn primario" id="mfa-ativar" hidden>Ativar</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-conta">
   <form id="form-conta" class="modal-corpo" autocomplete="off">
-    <h2 id="conta-titulo">Alterar senha</h2>
+    <h2 data-ico="cadeado" id="conta-titulo">Alterar senha</h2>
     <p class="dica" id="conta-info"></p>
     <div id="conta-bloco-senha">
       <label>Nova senha <input type="password" name="senha" maxlength="72" autocomplete="new-password"></label>
@@ -772,8 +774,8 @@
     </div>
     <p class="erro" role="alert" hidden></p>
     <div class="modal-acoes">
-      <button type="button" class="btn sec" id="conta-cancelar" data-fechar>Cancelar</button>
-      <button type="submit" class="btn primario">Salvar</button>
+      <button data-ico="fechar" type="button" class="btn sec" id="conta-cancelar" data-fechar>Cancelar</button>
+      <button type="submit" class="btn primario" data-ico="salvar">Salvar</button>
     </div>
   </form>
 </dialog>

@@ -683,12 +683,12 @@ begin
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
-     public._semaforo(current_date + 4, 'pendente_adm') = 'critico' and public._semaforo(current_date + 5, 'pendente_adm') = 'atencao'
+     public._semaforo((now() at time zone public._fuso())::date + 4, 'pendente_adm') = 'critico' and public._semaforo((now() at time zone public._fuso())::date + 5, 'pendente_adm') = 'atencao'
      and (public.resumo_livro()->>'alerta_dias') = '4');
   perform t.afirma('usuário comum lê o resumo e o semáforo (sem permissão direta ao parâmetro)',
      t.como('far@x', 'select (public.resumo_livro()->>''alerta_dias'')') = '4' and t.como('far@x', 'select count(*) >= 0 from public.v_livro') = 'true');
   update public.parametros set valor = '2' where chave = 'alerta_prazo_dias';
-  perform t.afirma('semáforo volta ao padrão de 2 dias', public._semaforo(current_date + 3, 'pendente_adm') = 'atencao');
+  perform t.afirma('semáforo volta ao padrão de 2 dias', public._semaforo((now() at time zone public._fuso())::date + 3, 'pendente_adm') = 'atencao');
   r := t.como('far@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('backup é negado a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('far@x', $q$select public.retencao_resumo(60)::text$q$);

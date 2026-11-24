@@ -28,7 +28,7 @@ def totp(segredo, t=None, passo=30):
     h = hmac.new(chave, struct.pack(">Q", n), hashlib.sha1).digest()
     o = h[-1] & 15
     return f"{(struct.unpack('>I', h[o:o + 4])[0] & 0x7fffffff) % 1000000:06d}"
-TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
+TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json"}
 
 
 def sql(texto):

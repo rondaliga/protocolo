@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#1f4e6e"/><path d="M216 120h80v96h96v80h-96v96h-80v-96h-96v-80h96z" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Livro de Protocolo">
+<defs>
+<linearGradient id="fundo" x1="64" y1="0" x2="448" y2="512" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3b94d6"/><stop offset=".55" stop-color="#1f5f8f"/><stop offset="1" stop-color="#123a56"/></linearGradient>
+<linearGradient id="brilho" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="selo" x1="300" y1="300" x2="460" y2="450" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34d3a0"/><stop offset="1" stop-color="#119d74"/></linearGradient>
+</defs>
+<rect width="512" height="512" rx="116" fill="url(#fundo)"/>
+<path d="M0 116A116 116 0 0 1 116 0h280a116 116 0 0 1 116 116v140H0z" fill="url(#brilho)"/>
+<path d="M256 150c-34-24-104-32-160-12v206c56-18 126-10 160 16 34-26 104-34 160-16V138c-56-20-126-12-160 12z" fill="#0b2c43" opacity=".35" transform="translate(0 10)"/>
+<path d="M256 148c-34-24-104-32-160-12v204c56-18 126-10 160 16z" fill="#fff"/>
+<path d="M256 148c34-24 104-32 160-12v204c-56-18-126-10-160 16z" fill="#e7f0f8"/>
+<path d="M256 148v208" stroke="#9fb9cf" stroke-width="6"/>
+<g fill="none" stroke="#1f5f8f" stroke-width="12" stroke-linecap="round" opacity=".42">
+<path d="M134 190c36-8 72-4 100 12"/><path d="M134 236c36-8 72-4 100 12"/><path d="M134 282c36-8 72-4 100 12"/>
+<path d="M278 202c28-16 64-20 100-12"/><path d="M278 248c28-16 64-20 100-12"/>
+</g>
+<circle cx="384" cy="376" r="82" fill="url(#selo)" stroke="#fff" stroke-width="14"/>
+<path d="M344 378l28 28 52-58" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

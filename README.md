@@ -199,6 +199,7 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
   (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
   Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
 - Quatro abas: **Usuários**; **Sistema** (Identidade visual, Prazos e regras com parâmetros validados e Uso do sistema, com um índice "Ir para"); **Setores e feriados** (os feriados contam no cálculo de horas úteis); e **Backup e retenção**.
+- **Ícone e visual:** o sistema tem ícone próprio (livro com selo de conferido) no cabeçalho, no login, na aba do navegador, no app instalado (`assets/icone.svg`, PNGs de 180/192/512 px) e nas impressões quando não há logotipo. Os ícones da interface são desenhos lineares sem biblioteca externa (`web/icones.js`). Para usar um ícone em qualquer elemento, basta `data-ico="nome"` (ex.: `<button data-ico="salvar">`); conteúdo montado por script também é atendido automaticamente. Nomes disponíveis: ver o dicionário no início de `icones.js`.
 - **Tema claro e escuro:** menu *Minha conta → Tema* (Automático segue o sistema operacional, Claro ou Escuro). A escolha fica só no navegador de cada pessoa. Impressões e PDF saem sempre em fundo branco.
 - Tudo é gravado na trilha de auditoria.
 

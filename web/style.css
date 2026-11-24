@@ -19,6 +19,11 @@
   --roxo: #4a2c82; --roxo-bg: #e9e1f7;
   --sombra: 0 1px 2px rgba(21, 58, 84, .06), 0 4px 14px rgba(21, 58, 84, .06);
   --sombra-forte: 0 10px 40px rgba(21, 58, 84, .18);
+  --malha: radial-gradient(1100px 480px at 88% -8%, rgba(59, 148, 214, .17), transparent 62%), radial-gradient(800px 420px at -6% 2%, rgba(31, 95, 143, .10), transparent 58%);
+  --topo-grad: linear-gradient(180deg, #ffffff 0%, #f5f9fc 100%);
+  --btn-grad: linear-gradient(180deg, #2c70a2 0%, #1f4e6e 100%); --btn-grad-hover: linear-gradient(180deg, #3380b6 0%, #245a82 100%);
+  --btn-sombra: 0 1px 0 rgba(255, 255, 255, .22) inset, 0 8px 16px -8px rgba(31, 78, 110, .75);
+  --marca-sombra: 0 6px 16px -4px rgba(21, 58, 84, .45);
   --raio: 10px;
 }
 :root[data-tema="escuro"] {
@@ -38,6 +43,11 @@
   --roxo: #cdb8f5; --roxo-bg: #2c2347;
   --sombra: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .3);
   --sombra-forte: 0 10px 40px rgba(0, 0, 0, .55);
+  --malha: radial-gradient(1100px 480px at 88% -8%, rgba(59, 148, 214, .16), transparent 62%), radial-gradient(800px 420px at -6% 2%, rgba(32, 180, 134, .07), transparent 58%);
+  --topo-grad: linear-gradient(180deg, #182431 0%, #131c26 100%);
+  --btn-grad: linear-gradient(180deg, #3a8cc6 0%, #2a6a9a 100%); --btn-grad-hover: linear-gradient(180deg, #4a9ed9 0%, #3277aa 100%);
+  --btn-sombra: 0 1px 0 rgba(255, 255, 255, .18) inset, 0 8px 18px -8px rgba(0, 0, 0, .8);
+  --marca-sombra: 0 6px 18px -4px rgba(0, 0, 0, .7);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]) {
@@ -57,6 +67,11 @@
     --roxo: #cdb8f5; --roxo-bg: #2c2347;
     --sombra: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .3);
     --sombra-forte: 0 10px 40px rgba(0, 0, 0, .55);
+    --malha: radial-gradient(1100px 480px at 88% -8%, rgba(59, 148, 214, .16), transparent 62%), radial-gradient(800px 420px at -6% 2%, rgba(32, 180, 134, .07), transparent 58%);
+    --topo-grad: linear-gradient(180deg, #182431 0%, #131c26 100%);
+    --btn-grad: linear-gradient(180deg, #3a8cc6 0%, #2a6a9a 100%); --btn-grad-hover: linear-gradient(180deg, #4a9ed9 0%, #3277aa 100%);
+    --btn-sombra: 0 1px 0 rgba(255, 255, 255, .18) inset, 0 8px 18px -8px rgba(0, 0, 0, .8);
+    --marca-sombra: 0 6px 18px -4px rgba(0, 0, 0, .7);
   }
 }
 * { box-sizing: border-box; }
@@ -279,7 +294,6 @@ label.chk.neutro { color: var(--texto); }
 
 /* ---------- modais e gaveta ---------- */
 dialog { border: 0; border-radius: 14px; padding: 0; width: min(620px, calc(100vw - 1.5rem)); max-height: 94vh; box-shadow: 0 16px 56px rgba(0, 0, 0, .4); color: var(--texto); background: var(--cartao); }
-dialog::backdrop { background: rgba(16, 32, 46, .55); }
 dialog.gaveta { margin: 0 0 0 auto; height: 100vh; max-height: 100vh; width: min(560px, 100vw); border-radius: 14px 0 0 14px; }
 .modal-corpo { padding: 1.4rem 1.5rem; display: grid; gap: .9rem; }
 .modal-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .6rem; }
@@ -541,3 +555,113 @@ main:focus { outline: none; }
 .menu-conta button:hover, .menu-conta button:focus-visible { background: var(--azul-claro); color: var(--azul-esc); }
 .menu-conta button:focus-visible { outline: 2px solid var(--foco); outline-offset: -2px; }
 .menu-conta hr { border: 0; border-top: 1px solid var(--borda); margin: .25rem .2rem; }
+
+/* =====================================================================
+   ACABAMENTO PROFISSIONAL (vale para os dois temas; tudo vem das variáveis acima)
+   ===================================================================== */
+html { scrollbar-color: var(--borda) transparent; }
+body { background-color: var(--fundo); background-image: var(--malha); background-attachment: fixed; background-repeat: no-repeat; letter-spacing: -.003em; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { letter-spacing: -.015em; }
+
+/* ícones de interface */
+.ico { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; vertical-align: -.2em; }
+.btn, .aba, .subaba, .atalho { display: inline-flex; align-items: center; gap: .5rem; }
+.btn[hidden], .aba[hidden] { display: none; }
+.menu-conta button { display: flex; }
+
+/* marca */
+.cruz { width: 42px; height: 42px; background: none; border-radius: 12px; overflow: hidden; box-shadow: var(--marca-sombra); line-height: 0; font-size: 0; }
+.cruz img { display: block; width: 100%; height: 100%; }
+.marca-grande .cruz { width: 62px; height: 62px; border-radius: 17px; }
+.marca-txt strong { font-weight: 800; letter-spacing: -.015em; }
+
+/* topo e abas */
+.topo { position: relative; background: var(--topo-grad); border-bottom: 1px solid var(--borda); padding-top: .85rem; box-shadow: 0 10px 24px -22px rgba(21, 58, 84, .6); }
+.topo::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, #3b94d6 0%, #1f5f8f 55%, #20b486 100%); }
+.abas { background: transparent; border-bottom: 1px solid var(--borda); padding-top: .5rem; }
+.aba { padding: .65rem 1.05rem; border-radius: 10px 10px 0 0; transition: color .15s, background .15s; }
+.aba:hover { color: var(--azul); background: var(--azul-claro); }
+.aba.ativa { color: var(--azul); }
+.usuario-txt strong { font-weight: 800; }
+
+/* botões e campos */
+.btn { border-radius: 10px; min-height: 2.5rem; justify-content: center; transition: background .15s, transform .12s, box-shadow .15s, border-color .15s; }
+.btn.mini { min-height: 2.1rem; }
+.btn:active { transform: translateY(1px); }
+.btn.primario { background: var(--btn-grad); border-color: transparent; box-shadow: var(--btn-sombra); }
+.btn.primario:hover { background: var(--btn-grad-hover); border-color: transparent; transform: translateY(-1px); }
+.btn.primario:active { transform: translateY(0); }
+.btn.sec { background: var(--sup); }
+.btn.sec:hover { background: var(--hover); border-color: var(--azul-borda); }
+input, select, textarea { border-radius: 10px; transition: border-color .15s, box-shadow .15s; }
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--azul-borda); }
+input:focus, select:focus, textarea:focus { border-color: var(--foco); box-shadow: 0 0 0 4px color-mix(in srgb, var(--foco) 28%, transparent); }
+
+/* atalhos e etiquetas */
+.atalho { padding: .4rem .95rem; box-shadow: var(--sombra); transition: all .15s; }
+.atalho.sel { background: var(--btn-grad); border-color: transparent; box-shadow: var(--btn-sombra); }
+.chip { letter-spacing: .01em; }
+.chip.pendente_adm::before, .chip.pendente_setor::before, .chip.concluido::before, .chip.devolvido::before {
+  content: ""; display: inline-block; width: .45rem; height: .45rem; margin-right: .4rem; border-radius: 50%; background: currentColor; vertical-align: .05em; }
+
+/* cartões e indicadores */
+.kpi { position: relative; border-radius: 14px; background: linear-gradient(180deg, var(--cartao), var(--sup-2)); box-shadow: var(--sombra); transition: transform .15s, box-shadow .15s, border-color .15s; overflow: hidden; }
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--sombra-forte); }
+.kpi strong { font-weight: 800; letter-spacing: -.02em; font-size: 2.2rem; }
+.kpi-rot { padding-right: 2.6rem; }
+.kpi-ico { position: absolute; top: .8rem; right: .8rem; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--azul-claro); color: var(--azul); }
+.kpi-ico .ico { width: 19px; height: 19px; }
+.kpi.k-adm .kpi-ico { background: var(--ambar-bg); color: var(--ambar); }
+.kpi.k-setor .kpi-ico { background: var(--info-bg); color: var(--info); }
+.kpi.k-ok .kpi-ico { background: var(--ok-bg); color: var(--ok); }
+.kpi.k-venc .kpi-ico { background: var(--erro-bg); color: var(--erro); }
+.kpi.k-sla .kpi-ico { background: var(--ambar-bg); color: var(--ambar); }
+.cartao-cfg, .filtros, .aviso, .tabela-wrap { border-radius: 14px; }
+.cartao-cfg { box-shadow: var(--sombra); }
+
+/* tabela */
+thead th { background: color-mix(in srgb, var(--azul-claro) 80%, var(--cartao)); color: var(--suave); text-transform: uppercase; letter-spacing: .05em; font-size: .7rem; font-weight: 800; padding: .8rem .85rem; border-bottom: 1px solid var(--borda); }
+td { border-top-color: color-mix(in srgb, var(--borda) 70%, transparent); }
+tbody tr[data-id] { transition: background .12s; }
+tbody tr[data-id]:hover td:first-child { box-shadow: inset 3px 0 0 var(--azul); }
+
+/* login */
+.cartao-login { position: relative; overflow: hidden; border-radius: 20px; padding: 2.2rem 2rem 1.8rem; }
+.cartao-login::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, #3b94d6, #1f5f8f 55%, #20b486); }
+.cartao-login h1 { font-weight: 800; }
+.tema-login { box-shadow: var(--sombra); }
+
+/* menu e diálogos */
+.menu-conta { border-radius: 14px; padding: .4rem; }
+.menu-conta button { gap: .65rem; }
+.menu-conta .ico { color: var(--suave); }
+.menu-conta button:hover .ico, .menu-conta button:focus-visible .ico { color: var(--azul); }
+dialog { border-radius: 16px; }
+dialog::backdrop { background: rgba(9, 18, 28, .55); backdrop-filter: blur(3px); }
+.sino .ico { width: 1.05em; height: 1.05em; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media print { body { background: #fff !important; } }
+
+/* abas rolam na horizontal em telas estreitas, sem esticar a página */
+.abas { overflow-x: auto; scrollbar-width: none; }
+.abas::-webkit-scrollbar { display: none; }
+.aba { white-space: nowrap; flex: none; }
+@media (max-width: 600px) { .topo { padding-left: 1rem; padding-right: 1rem; } .abas { padding-left: 1rem; padding-right: 1rem; } }
+
+/* ÍCONES — complementos de layout */
+h2 > .ico, h3 > .ico { width: 1.05em; height: 1.05em; margin-right: .5rem; color: var(--azul); vertical-align: -.12em; }
+.btn .ico { width: 1.1em; height: 1.1em; }
+.btn.perigo .ico { color: inherit; }
+.tag .ico { width: .95em; height: .95em; vertical-align: -.15em; }
+.tag[data-ico] { display: inline-flex; align-items: center; padding: .1rem .3rem; }
+.chip .ico, .et-st .ico, .pin-ok .ico { width: 1em; height: 1em; margin-right: .3rem; }
+.faixa-alerta { display: flex; align-items: center; gap: .55rem; }
+.faixa-alerta .ico { width: 1.2em; height: 1.2em; }
+.faixa-alerta > span { flex: 1; }
+.aviso-rascunho .ico { margin-right: .4rem; color: var(--ok, currentColor); }
+.subaba .ico { width: 1.05em; height: 1.05em; }
+.sis-indice button .ico { width: 1em; height: 1em; }
+.atalho .ico { width: 1em; height: 1em; }
+.btn[data-ico] > span[data-ico] { display: inline-flex; }
+.sis-indice button { display: inline-flex; align-items: center; gap: .35rem; }

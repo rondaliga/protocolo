@@ -13,7 +13,8 @@
     if (t === 'auto') delete raiz.dataset.tema; else raiz.dataset.tema = t;
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', escuroAgora(t) ? '#0e151d' : '#1f4e6e');
-    document.querySelectorAll('[data-tema-btn]').forEach((b) => { b.textContent = ROTULO[t]; b.setAttribute('aria-label', `${ROTULO[t]}. Clique para alternar.`); });
+    const ic = { auto: 'tela', claro: 'sol', escuro: 'lua' }[t];
+    document.querySelectorAll('[data-tema-btn]').forEach((b) => { b.innerHTML = (window.ico ? window.ico(ic) : '') + '<span>' + ROTULO[t] + '</span>'; b.setAttribute('aria-label', `${ROTULO[t]}. Clique para alternar.`); });
   }
   let atual = ler();
   aplicar(atual);

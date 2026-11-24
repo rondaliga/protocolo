@@ -1,2 +1,2 @@
 Coloque aqui o logotipo da instituição como **logo.png** (fundo transparente, ~400 px de largura).
-Ele aparece automaticamente no login, no topo e nas impressões. Sem o arquivo, o sistema usa um ícone de cruz.
+Ele aparece automaticamente no login, no topo e nas impressões. Sem o arquivo, o sistema usa o ícone padrão (livro com selo de conferido), que também é o ícone da aba do navegador e do app instalado.
