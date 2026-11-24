@@ -253,7 +253,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
 
 **Instalação e manutenção**
-- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 9 de 9") e é idempotente.
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 10 de 10") e é idempotente.
 - `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
 
 **Inatividade**
@@ -316,6 +316,14 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ### Foto no celular e texto longo
 - **Tirar foto** agora abre a câmera **dentro do sistema** (também no celular), sem trocar de aplicativo — corrige o erro em alguns Android. Há botão *Trocar câmera*; se o navegador negar a câmera, abre a câmera do aparelho ou a galeria.
 - Descrições longas sem espaços (ex.: "AAAA…") quebram dentro do quadro e não alteram mais a largura da lista nem da gaveta de detalhes.
+
+## 4I. Relatórios, verificação da instalação e avisos no celular (migração 10)
+
+- **Painel → Relatórios:** período livre (até 12 meses) com atalhos de 7, 30 e 90 dias e do ano. Mostra registrados, concluídos, em andamento, prazo vencido, concluídos no prazo, urgentes, reencaminhamentos e devoluções; tempo médio entre as etapas (Portaria→ADM, ADM→setor, registro→conclusão, em horas corridas); gráfico por dia; quadro por setor e maiores atrasos. **Exporta para Excel** e **imprime/PDF**. Não mostra descrição de documentos; cada geração fica na trilha (`RELATORIO_GERADO`).
+- **Painel → Sistema → Verificar instalação:** confere a versão do banco, RLS, acessos diretos às tabelas sensíveis, trilha íntegra, gestor/ADM/Portaria ativos, setores sem responsável, e-mails dos usuários, Brevo, pg_net e avisos no celular. Somente leitura.
+- **Avisos no celular (Web Push, gratuito):** `sw.js` + `avisos.js` + Edge Function `supabase/functions/enviar-push`. Cada usuário ativa em *Minha conta → Avisos neste aparelho*. O aviso leva só o número do protocolo. Ao sair do sistema, o aparelho deixa de receber os avisos daquele usuário. Passo a passo: `GUIA_AVISOS_NO_CELULAR.md`.
+- **Roteiro de conferência no Supabase real:** `ROTEIRO_VALIDACAO.md`. **E-mail com domínio próprio (sem custo):** `GUIA_DOMINIO_EMAIL.md`.
+- WhatsApp e SMS ficaram de fora por não serem gratuitos.
 
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 

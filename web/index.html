@@ -66,7 +66,7 @@
           <ul id="lista-sino"></ul>
           <p class="vazio-sino" id="vazio-sino">Nenhuma pendência. Tudo em dia.</p>
           <div class="sino-rodape">
-            <button data-ico="sino" class="btn mini sec" type="button" id="btn-notif">Ativar avisos no computador</button>
+            <button data-ico="sino" class="btn mini sec" type="button" id="btn-notif">Avisos neste aparelho</button>
             <label class="sino-som"><input type="checkbox" id="chk-som" checked> Som</label>
           </div>
         </div>
@@ -77,6 +77,7 @@
           <button type="button" role="menuitem" id="btn-senha"><span data-ico="cadeado"></span>Alterar senha</button>
           <button type="button" role="menuitem" id="btn-pin"><span data-ico="pin"></span>Alterar PIN</button>
           <button type="button" role="menuitem" id="btn-mfa"><span data-ico="escudo"></span>Verificação em duas etapas</button>
+          <button type="button" role="menuitem" id="btn-avisos"><span data-ico="sino"></span>Avisos neste aparelho</button>
           <hr>
           <button type="button" role="menuitem" class="btn-tema" data-tema-btn>Tema: Automático</button>
         </div>
@@ -228,6 +229,7 @@
     <section id="painel-controle" hidden>
       <nav class="subabas" id="subabas" aria-label="Painel de controle">
         <button data-ico="pessoas" type="button" class="subaba ativa" data-sub="usuarios">Usuários</button>
+        <button data-ico="grafico" type="button" class="subaba" data-sub="relatorios">Relatórios</button>
         <button data-ico="sliders" type="button" class="subaba" data-sub="sistema">Sistema</button>
         <button data-ico="predio" type="button" class="subaba" data-sub="cadastros">Setores e feriados</button>
         <button data-ico="nuvem" type="button" class="subaba" data-sub="backup">Backup e retenção</button>
@@ -257,6 +259,29 @@
 
 
 
+      <div id="sub-relatorios" class="sub" hidden>
+        <section class="sis-sec" aria-labelledby="rel-t">
+          <h2 data-ico="grafico" id="rel-t" tabindex="-1">Relatórios gerenciais</h2>
+          <p class="dica">Números do período para prestação de contas. Os relatórios não mostram a descrição dos documentos.</p>
+          <form id="form-rel" class="barra-rel" novalidate>
+            <label>De <input type="date" name="inicio"></label>
+            <label>Até <input type="date" name="fim"></label>
+            <span class="atalhos-rel" role="group" aria-label="Períodos rápidos">
+              <button type="button" class="atalho" data-rel="7">7 dias</button>
+              <button type="button" class="atalho" data-rel="30">30 dias</button>
+              <button type="button" class="atalho" data-rel="90">90 dias</button>
+              <button type="button" class="atalho" data-rel="ano">Este ano</button>
+            </span>
+            <button type="submit" class="btn primario" data-ico="busca">Gerar relatório</button>
+          </form>
+          <p class="erro" id="rel-erro" role="alert" hidden></p>
+          <div id="rel-saida" aria-live="polite"></div>
+          <div class="barra" id="rel-acoes" hidden>
+            <button type="button" class="btn sec" id="rel-xlsx" data-ico="planilha">Exportar Excel</button>
+            <button type="button" class="btn sec" id="rel-imprimir" data-ico="imprimir">Imprimir / PDF</button>
+          </div>
+        </section>
+      </div>
       <div id="sub-sistema" class="sub" hidden>
         <nav class="sis-indice" id="sis-indice" aria-label="Seções do sistema">
           <span>Ir para:</span>
@@ -304,6 +329,23 @@
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
         <div class="barra"><button type="button" class="btn sec" id="btn-email-teste" data-ico="email">Enviar e-mail de teste</button><span class="dica" id="email-teste-msg" role="status"></span></div>
+        <section class="cartao-cfg larga" id="cartao-diag" aria-labelledby="diag-t">
+          <h3 data-ico="verificar" id="diag-t">Verificar instalação</h3>
+          <p class="dica">Confere banco de dados, segurança, usuários e avisos. Não altera nada.</p>
+          <div class="barra"><button type="button" class="btn sec" id="btn-diag" data-ico="verificar">Verificar agora</button></div>
+          <ul class="diag" id="diag-saida" aria-live="polite"></ul>
+        </section>
+        <section class="cartao-cfg larga" id="cartao-push" aria-labelledby="push-t">
+          <h3 data-ico="sino" id="push-t">Avisos no celular (gratuito)</h3>
+          <p class="dica" id="push-estado"></p>
+          <p class="dica">O envio usa uma função gratuita do Supabase. Gere as chaves abaixo e siga o <strong>GUIA_AVISOS_NO_CELULAR.md</strong>. A chave privada aparece só aqui: copie e guarde antes de sair da tela.</p>
+          <div class="barra"><button type="button" class="btn sec" id="btn-chaves-push" data-ico="chave">Gerar chaves</button></div>
+          <div id="push-chaves" hidden>
+            <label>Chave pública (VAPID_PUBLIC) <input type="text" id="push-pub" readonly></label>
+            <label>Chave privada (VAPID_PRIVATE) <input type="text" id="push-priv" readonly></label>
+            <label>Segredo do envio (PUSH_SECRET) <input type="text" id="push-seg" readonly></label>
+          </div>
+        </section>
         </section>
       </div>
       <div id="sub-cadastros" class="sub" hidden>
@@ -780,6 +822,21 @@
   </form>
 </dialog>
 
+<!-- ============ MODAL: AVISOS NO APARELHO ============ -->
+<dialog id="dlg-avisos" aria-labelledby="avisos-titulo">
+  <div class="modal-corpo">
+    <h2 data-ico="sino" id="avisos-titulo">Avisos neste aparelho</h2>
+    <p id="avisos-estado" class="dica" role="status"></p>
+    <p class="dica">Os avisos mostram só o número do protocolo, nunca a descrição do documento. Você pode desativar quando quiser.</p>
+    <p class="erro" id="avisos-erro" role="alert" hidden></p>
+    <div class="modal-acoes">
+      <button data-ico="fechar" type="button" class="btn sec" data-fechar>Fechar</button>
+      <button data-ico="sino" type="button" class="btn primario" id="avisos-ativar" hidden>Ativar avisos neste aparelho</button>
+      <button data-ico="fechar" type="button" class="btn perigo" id="avisos-desativar" hidden>Desativar neste aparelho</button>
+    </div>
+  </div>
+</dialog>
+
 <div id="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- Área de impressão (preenchida por JS; só aparece ao imprimir) -->
@@ -788,6 +845,7 @@
 <script src="config.js"></script>
 <script src="assinatura.js"></script>
 <script src="xlsx.js"></script>
+<script src="avisos.js"></script>
 <script src="painel.js"></script>
 <script src="app.js"></script>
 </body>

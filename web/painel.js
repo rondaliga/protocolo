@@ -27,7 +27,7 @@
       SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra alterada', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
-      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado',
+      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', RELATORIO_GERADO: 'Relatório gerado',
     };
 
     // ---------- parâmetros: rótulos, formatos de hora e de duração (espelham as regras do banco)
@@ -242,7 +242,7 @@
 
     // ================================================================== PAINEL DE CONTROLE
     const painel = { sub: 'usuarios', usuarios: [], setores: [] };
-    const SUBS = ['usuarios', 'sistema', 'cadastros', 'backup'];
+    const SUBS = ['usuarios', 'relatorios', 'sistema', 'cadastros', 'backup'];
 
     function abrirPainel() { trocarSub(painel.sub); }
     function trocarSub(n) {
@@ -250,6 +250,7 @@
       $$('.subaba').forEach((b) => b.classList.toggle('ativa', b.dataset.sub === n));
       SUBS.forEach((s) => { $(`#sub-${s}`).hidden = s !== n; });
       if (n === 'usuarios') carregarUsuarios();
+      else if (n === 'relatorios') iniciarRelatorio();
       else if (n === 'sistema') { carregarParametros(); carregarSistema(); }
       else if (n === 'cadastros') { carregarSetores(); carregarFeriados(); }
       else carregarBackup();
@@ -495,7 +496,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 9${v < 9 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 10${v < 10 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -507,12 +508,146 @@
           + k('Envio imediato (Brevo)', r.brevo_configurado ? 'Ativo' : 'Inativo', r.brevo_configurado ? 'avisos saem na hora' : 'veja o guia do Brevo')
           + k('E-mails na fila', r.email_pendente, 'aguardando envio') + k('E-mails com erro', r.email_erro, r.ultimo_erro_email || 'nenhum erro')
           + k('E-mails enviados', r.email_enviado, 'total entregue');
+        $('#push-estado').textContent = r.push_configurado
+          ? `Envio ativo. ${pl(r.push_aparelhos, 'aparelho ativado', 'aparelhos ativados')}. Cada usuário ativa em Minha conta > Avisos neste aparelho.`
+          : 'Ainda não ativado. É opcional: sem ele, os avisos chegam pelo sino e por e-mail.';
         $('#sistema-aviso').textContent = r.brevo_configurado
           ? 'Envio imediato pelo Brevo ativo: o ADM e os setores recebem o e-mail no instante do registro ou do encaminhamento. Use o botão abaixo para conferir.'
           : r.integracao_configurada
             ? 'Sem envio imediato: os e-mails saem pela rotina do GitHub Actions (a cada ~15 min). Para enviar na hora, configure o Brevo (GUIA_BREVO.md).'
             : 'E-mail ainda não configurado: os avisos ficam só no sistema (sino). Siga o GUIA_BREVO.md para ativar o envio imediato.';
       } catch (e) { falha(e); }
+    }
+
+
+    // ================================================================== RELATÓRIOS GERENCIAIS
+    const rel = { dados: null };
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const horasTxt = (h) => {
+      if (h === null || h === undefined) return '—';
+      const m = Math.round(Number(h) * 60);
+      if (m < 60) return `${m} min`;
+      if (m < 1440) return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+      const d = Math.floor(m / 1440), hh = Math.round((m % 1440) / 60);
+      return `${d} d${hh ? ` ${hh} h` : ''}`;
+    };
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+    function periodoRapido(tipo) {
+      const f = $('#form-rel'), hoje = new Date();
+      const ini = new Date(hoje);
+      if (tipo === 'ano') ini.setMonth(0, 1); else ini.setDate(ini.getDate() - (Number(tipo) - 1));
+      f.inicio.value = iso(ini); f.fim.value = iso(hoje);
+    }
+    function iniciarRelatorio() {
+      const f = $('#form-rel');
+      if (!f.inicio.value) { periodoRapido('30'); gerarRelatorio(); }
+    }
+    function graficoDias(dias) {
+      const max = Math.max(1, ...dias.map((d) => d.n)), N = dias.length, L = 10, A = 100;
+      const barras = dias.map((d, i) => { const h = Math.round((d.n / max) * A); return d.n ? `<rect class="g-barra" x="${i * L + 1}" y="${A - h}" width="${L - 2}" height="${h}"><title>${esc(data(d.dia + 'T12:00:00'))}: ${d.n}</title></rect>` : ''; }).join('');
+      return `<svg class="grafico" viewBox="0 0 ${N * L} ${A}" preserveAspectRatio="none" role="img" aria-label="Protocolos registrados por dia"><line class="g-eixo" x1="0" y1="${A}" x2="${N * L}" y2="${A}"/>${barras}</svg>
+        <div class="grafico-eixo"><span>${esc(data(dias[0].dia + 'T12:00:00'))}</span><span>pico: ${max} por dia</span><span>${esc(data(dias[N - 1].dia + 'T12:00:00'))}</span></div>`;
+    }
+    function renderRelatorio(r) {
+      const T = r.totais, tp = r.tempo_horas, k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
+      const conc = T.concluidos, noPrazo = T.concluidos_no_prazo;
+      const maxSetor = Math.max(1, ...r.por_setor.map((s) => s.total));
+      $('#rel-saida').innerHTML = `
+        <p class="dica">Período: <strong>${esc(data(r.periodo.inicio + 'T12:00:00'))}</strong> a <strong>${esc(data(r.periodo.fim + 'T12:00:00'))}</strong> · tempos em horas corridas.</p>
+        <div class="kpis-rel">
+          ${k('Registrados', T.registrados, `${pl(T.judiciais, 'judicial', 'judiciais')} · ${pl(T.correspondencias, 'correspondência', 'correspondências')}`)}
+          ${k('Concluídos', conc, pct(conc, T.registrados) + ' do período')}
+          ${k('Em andamento', T.em_andamento, `${T.aguardando_adm} no ADM · ${T.aguardando_setor} no setor`)}
+          ${k('Prazo vencido', T.vencidos, 'ainda sem conclusão')}
+          ${k('Concluídos no prazo', pct(noPrazo, conc), `${noPrazo} de ${conc}`)}
+          ${k('Urgentes', T.urgentes, `${pl(r.movimentacoes.reencaminhados, 'reencaminhado', 'reencaminhados')} · ${pl(r.movimentacoes.devolvidos, 'devolvido', 'devolvidos')}`)}
+        </div>
+        <h3>Tempo entre as etapas</h3>
+        <div class="kpis-rel">
+          ${k('Portaria → ADM', horasTxt(tp.portaria_adm.media), `média · máx. ${horasTxt(tp.portaria_adm.maximo)} · ${tp.portaria_adm.n} protocolos`)}
+          ${k('ADM → setor', horasTxt(tp.adm_setor.media), `média · máx. ${horasTxt(tp.adm_setor.maximo)} · ${tp.adm_setor.n} protocolos`)}
+          ${k('Registro → conclusão', horasTxt(tp.total.media), `média · máx. ${horasTxt(tp.total.maximo)} · ${tp.total.n} protocolos`)}
+        </div>
+        <h3>Registros por dia</h3>
+        ${graficoDias(r.por_dia)}
+        <h3>Por setor de destino</h3>
+        <div class="tabela-rolagem"><table class="tab-rel"><thead><tr><th>Setor</th><th>Volume</th><th class="num">Total</th><th class="num">Concluídos</th><th class="num">Aguardando</th><th class="num">Vencidos</th><th class="num">ADM → setor (média)</th></tr></thead><tbody>
+          ${r.por_setor.length ? r.por_setor.map((s) => `<tr><td>${esc(s.setor)}</td><td><svg class="g-h" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect class="g-barra" x="0" y="0" width="${Math.max(2, Math.round((s.total / maxSetor) * 100))}" height="8"/></svg></td>
+            <td class="num">${s.total}</td><td class="num">${s.concluidos}</td><td class="num">${s.aguardando}</td><td class="num ${s.vencidos ? 'alerta' : ''}">${s.vencidos}</td><td class="num">${horasTxt(s.horas_medias)}</td></tr>`).join('')
+            : '<tr><td colspan="7">Nenhum protocolo encaminhado a setores neste período.</td></tr>'}
+        </tbody></table></div>
+        <h3>Maiores atrasos (até 10)</h3>
+        <div class="tabela-rolagem"><table class="tab-rel"><thead><tr><th>Protocolo</th><th>Está com</th><th>Tipo</th><th class="num">Dias de atraso</th></tr></thead><tbody>
+          ${r.atrasados.length ? r.atrasados.map((a) => `<tr><td><button type="button" class="link" data-prot-rel="${esc(a.numero)}">${esc(a.numero)}</button>${a.urgente ? ' <span class="tag">urgente</span>' : ''}</td><td>${esc(a.setor)}</td><td>${a.tipo === 'judicial' ? 'Judicial' : 'Correspondência'}</td><td class="num alerta">${a.dias_atraso}</td></tr>`).join('')
+            : '<tr><td colspan="4">Nenhum protocolo com prazo vencido.</td></tr>'}
+        </tbody></table></div>`;
+      $('#rel-acoes').hidden = false;
+    }
+    async function gerarRelatorio() {
+      const f = $('#form-rel'), er = $('#rel-erro'); er.hidden = true;
+      const btn = f.querySelector('[type=submit]'); btn.disabled = true;
+      try {
+        const r = await rpc('painel_relatorio', { p_inicio: f.inicio.value || null, p_fim: f.fim.value || null });
+        rel.dados = r; renderRelatorio(r);
+      } catch (e) { er.textContent = e.message; er.hidden = false; } finally { btn.disabled = false; }
+    }
+    function linhasPlanilha(r) {
+      const T = r.totais, tp = r.tempo_horas, L = [];
+      const add = (sec, item, valor, det = '') => L.push([sec, item, valor, det]);
+      [['Registrados', T.registrados], ['Concluídos', T.concluidos], ['Em andamento', T.em_andamento], ['Aguardando o ADM', T.aguardando_adm], ['Aguardando o setor', T.aguardando_setor],
+        ['Prazo vencido (sem conclusão)', T.vencidos], ['Concluídos no prazo', T.concluidos_no_prazo], ['Concluídos fora do prazo', T.concluidos_fora_do_prazo], ['Urgentes', T.urgentes],
+        ['Judiciais', T.judiciais], ['Correspondências', T.correspondencias], ['Reencaminhamentos', r.movimentacoes.reencaminhados], ['Devoluções', r.movimentacoes.devolvidos]].forEach(([i, v]) => add('Totais', i, v));
+      [['Portaria → ADM', tp.portaria_adm], ['ADM → setor', tp.adm_setor], ['Registro → conclusão', tp.total]].forEach(([i, o]) => add('Tempo médio (horas)', i, o.media, `máximo ${o.maximo === null ? '—' : o.maximo} h · ${o.n} protocolos`));
+      r.por_setor.forEach((s) => add('Por setor', s.setor, s.total, `concluídos ${s.concluidos} · aguardando ${s.aguardando} · vencidos ${s.vencidos} · ADM→setor ${s.horas_medias === null ? '—' : s.horas_medias + ' h'}`));
+      r.atrasados.forEach((a) => add('Maiores atrasos', a.numero, a.dias_atraso, `${a.setor} · ${a.tipo === 'judicial' ? 'judicial' : 'correspondência'}${a.urgente ? ' · urgente' : ''}`));
+      r.por_dia.forEach((d) => add('Registros por dia', data(d.dia + 'T12:00:00'), d.n));
+      return L;
+    }
+    async function exportarRelatorioXlsx() {
+      if (!rel.dados) return;
+      try {
+        const r = rel.dados;
+        const bytes = window.criarXlsx({ nome: 'Relatório gerencial',
+          colunas: [{ titulo: 'Seção', largura: 24 }, { titulo: 'Item', largura: 36 }, { titulo: 'Valor', largura: 14, tipo: 'numero' }, { titulo: 'Detalhe', largura: 70, tipo: 'texto-longo' }],
+          linhas: linhasPlanilha(r) });
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `relatorio-${r.periodo.inicio}-a-${r.periodo.fim}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        toast('Relatório exportado.');
+      } catch (e) { toast(e.message, true); }
+    }
+    function imprimirRelatorio() {
+      if (!rel.dados) return;
+      const r = rel.dados, agora = new Date().toISOString();
+      LP.imprimir('livro', `${LP.cabecalhoImpressao('RELATÓRIO GERENCIAL')}
+        <p class="p-meta">Período: ${esc(data(r.periodo.inicio + 'T12:00:00'))} a ${esc(data(r.periodo.fim + 'T12:00:00'))} · Emitido por ${esc(LP.estado().perfil.nome)} em ${data(agora)} ${hora(agora)}</p>
+        ${$('#rel-saida').innerHTML.replace(/<p class="dica">.*?<\/p>/s, '').replace(/<button[^>]*>([^<]*)<\/button>/g, '$1')}${LP.rodapeImpressao()}`);
+    }
+
+    // ================================================================== VERIFICAR INSTALAÇÃO E CHAVES DE AVISO
+    async function verificarInstalacao() {
+      const btn = $('#btn-diag'), ul = $('#diag-saida'); btn.disabled = true; ul.innerHTML = '<li>Verificando…</li>';
+      try {
+        const r = await rpc('painel_diagnostico');
+        const ic = { ok: 'ok', aviso: 'alerta', erro: 'fechar' };
+        let grupo = '';
+        ul.innerHTML = `<li class="diag-resumo ${r.ok ? 'diag-ok' : 'diag-erro'}">${r.ok ? 'Instalação em ordem' : pl(r.erros, 'problema precisa de correção', 'problemas precisam de correção')}${r.avisos ? ` · ${pl(r.avisos, 'aviso', 'avisos')}` : ''}</li>`
+          + r.itens.map((i) => { const cab = i.grupo !== grupo ? `<li class="diag-grupo">${esc(i.grupo)}</li>` : ''; grupo = i.grupo;
+            return `${cab}<li class="diag-${esc(i.nivel)}"><span class="diag-ico" data-ico="${ic[i.nivel] || 'info'}"></span><div><strong>${esc(i.item)}</strong><small>${esc(i.detalhe)}</small></div></li>`; }).join('');
+      } catch (e) { ul.innerHTML = ''; falha(e); } finally { btn.disabled = false; }
+    }
+    const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    async function gerarChavesPush() {
+      try {
+        const par = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+        const jwk = await crypto.subtle.exportKey('jwk', par.privateKey);
+        const raw = await crypto.subtle.exportKey('raw', par.publicKey);
+        $('#push-pub').value = b64url(raw); $('#push-priv').value = jwk.d;
+        const s = new Uint8Array(24); crypto.getRandomValues(s); $('#push-seg').value = b64url(s);
+        $('#push-chaves').hidden = false; $('#push-priv').select();
+        toast('Chaves geradas. Copie e guarde: a privada não será mostrada de novo.');
+      } catch { toast('Este navegador não consegue gerar as chaves. Use o Chrome ou o Edge atualizado.', true); }
     }
 
     // ================================================================== EVENTOS
@@ -530,6 +665,16 @@
       $('#aud-xlsx').addEventListener('click', exportarXlsx);
       $('#aud-imprimir').addEventListener('click', imprimirTrilha);
       $('#tbody-audit').addEventListener('click', (ev) => { const b = ev.target.closest('[data-prot]'); if (b) LP.abrirDetalhe(b.dataset.prot); });
+
+      // relatórios, verificação e chaves de aviso
+      $('#form-rel').addEventListener('submit', (ev) => { ev.preventDefault(); gerarRelatorio(); });
+      $$('[data-rel]').forEach((b) => b.addEventListener('click', () => { periodoRapido(b.dataset.rel); gerarRelatorio(); }));
+      $('#rel-xlsx').addEventListener('click', exportarRelatorioXlsx);
+      $('#rel-imprimir').addEventListener('click', imprimirRelatorio);
+      $('#rel-saida').addEventListener('click', async (ev) => { const b = ev.target.closest('[data-prot-rel]'); if (!b) return;
+        try { const r = await rpc('listar_livro', { p_q: b.dataset.protRel, p_limite: 1, p_offset: 0 }); const id = r.itens && r.itens[0] && r.itens[0].id; if (id) LP.abrirDetalhe(id); } catch (e) { falha(e); } });
+      $('#btn-diag').addEventListener('click', verificarInstalacao);
+      $('#btn-chaves-push').addEventListener('click', gerarChavesPush);
 
       // dados, backup e retenção
       $('#btn-email-teste').addEventListener('click', async () => {

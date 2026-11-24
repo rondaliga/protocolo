@@ -65,6 +65,7 @@
       const v = l[i], tipo = c.tipo || 'texto';
       if (tipo === 'data') return cel(i, k + 2, v ? serialData(v) : null, 2, 'n');
       if (tipo === 'hora') return cel(i, k + 2, v ? fracHora(v).toFixed(8) : null, 3, 'n');
+      if (tipo === 'numero') return cel(i, k + 2, v === null || v === undefined || v === '' ? null : Number(v), 0, 'n');
       return cel(i, k + 2, v, estilo[tipo] || 4, 's');
     }).join('')}</row>`).join('');
     const ultima = `${letra(colunas.length - 1)}${linhas.length + 1}`;

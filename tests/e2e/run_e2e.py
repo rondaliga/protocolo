@@ -472,12 +472,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "9 de 9" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "10 de 10" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 9
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 10
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -675,6 +675,28 @@ try:
         page.click("#btn-email-teste"); expect(page.locator("#email-teste-msg")).to_contain_text("enviado para", timeout=8000)
         assert int(psql("select count(*) from net.http_log where url like 'https://api.brevo.com/%'")) >= 1
         page.screenshot(path=str(OUT / "17_email_teste.png"))
+        # verificar instalação
+        page.click("#btn-diag"); expect(page.locator("#diag-saida .diag-resumo")).to_contain_text("Instalação em ordem", timeout=8000)
+        assert page.locator("#diag-saida .diag-erro:not(.diag-resumo)").count() == 0, page.inner_text("#diag-saida")
+        page.screenshot(path=str(OUT / "18_verificar_instalacao.png"))
+        # chaves para avisos no celular
+        page.click("#btn-chaves-push"); expect(page.locator("#push-chaves")).to_be_visible()
+        assert len(page.input_value("#push-pub")) == 87 and len(page.input_value("#push-priv")) == 43 and len(page.input_value("#push-seg")) >= 30
+        # relatórios
+        page.click("[data-sub=relatorios]"); expect(page.locator("#rel-saida .kpis-rel").first).to_be_visible(timeout=8000)
+        _t = page.inner_text("#rel-saida").lower(); assert "registrados" in _t and "tempo entre as etapas" in _t, _t
+        page.click("[data-rel='90']"); expect(page.locator("#rel-saida .grafico")).to_be_visible(timeout=8000)
+        n_rel = int(psql("select count(*) from public.protocolos")); assert str(n_rel) in page.locator("#rel-saida .kpis-rel .kpi").first.inner_text()
+        page.fill("#form-rel input[name=inicio]", "2030-01-02"); page.fill("#form-rel input[name=fim]", "2030-01-01"); page.click("#form-rel [type=submit]")
+        expect(page.locator("#rel-erro")).to_contain_text("data final", timeout=6000)
+        page.click("[data-rel='30']"); expect(page.locator("#rel-saida .grafico")).to_be_visible(timeout=8000)
+        with page.expect_download() as dl: page.click("#rel-xlsx")
+        assert dl.value.suggested_filename.endswith(".xlsx")
+        page.screenshot(path=str(OUT / "19_relatorios.png"), full_page=True)
+        # avisos neste aparelho
+        page.click("#btn-conta"); page.click("#btn-avisos"); expect(page.locator("#dlg-avisos[open]")).to_be_visible()
+        expect(page.locator("#avisos-estado")).not_to_be_empty(timeout=4000)
+        page.screenshot(path=str(OUT / "20_avisos_aparelho.png")); page.keyboard.press("Escape")
         b.close()
     print("\nE2E OK")
 finally:

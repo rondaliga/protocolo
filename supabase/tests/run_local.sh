@@ -20,6 +20,8 @@ psql -v ON_ERROR_STOP=1 -q -d $DB -f ../07_mfa.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../08_fluxo.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../08_fluxo.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../09_alertas_imediatos.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../10_relatorios_push_diagnostico.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../09_alertas_imediatos.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../10_relatorios_push_diagnostico.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 02_testes.sql 2>&1 | sed -E 's/^psql:[^ ]+ [0-9]+: //'
 psql -qc "drop database $DB" postgres

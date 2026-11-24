@@ -15,6 +15,7 @@ psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 06_inatividade.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 07_mfa.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 08_fluxo.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 09_alertas_imediatos.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 10_relatorios_push_diagnostico.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" >/dev/null <<'SQL'
 insert into auth.users (email) values ('portaria@teste.local'),('adm@teste.local'),('juridico@teste.local'),('farmacia@teste.local'),('gestor@teste.local');
 select public.admin_cadastrar_perfil('portaria@teste.local','Maria (Portaria)','portaria',null,'1111');

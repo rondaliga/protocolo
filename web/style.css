@@ -681,3 +681,32 @@ td.desc .tag { white-space: nowrap; }
 table td.d, table td.detalhes { overflow-wrap: anywhere; }
 .cam-video { aspect-ratio: 4 / 3; }
 @media (max-width: 520px) { #dlg-camera .modal-acoes { flex-wrap: wrap; } #dlg-camera .modal-acoes .btn { flex: 1 1 auto; justify-content: center; } }
+
+/* RELATÓRIOS, VERIFICAÇÃO DA INSTALAÇÃO E AVISOS NO APARELHO */
+.barra-rel { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: flex-end; margin: .5rem 0 1rem; }
+.barra-rel label { display: grid; gap: .25rem; font-size: .85rem; color: var(--texto-2, inherit); }
+.barra-rel input { box-sizing: border-box; height: 2.75rem; }
+.barra-rel .btn { height: 2.75rem; }
+.atalhos-rel { display: inline-flex; flex-wrap: wrap; gap: .4rem; }
+.kpis-rel { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin: .5rem 0 1.25rem; }
+#rel-saida h3 { margin: 1.25rem 0 .4rem; font-size: 1rem; }
+.grafico { width: 100%; height: 150px; display: block; background: var(--superficie-2, rgba(127,127,127,.06)); border-radius: 10px; }
+.g-barra { fill: var(--azul); }
+.g-eixo { stroke: var(--borda, #cbd5e1); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.g-h { width: 100%; min-width: 80px; height: 10px; display: block; }
+.grafico-eixo { display: flex; justify-content: space-between; font-size: .8rem; color: var(--texto-2, inherit); margin-top: .3rem; }
+.tabela-rolagem { overflow-x: auto; }
+.tab-rel { width: 100%; border-collapse: collapse; }
+.tab-rel th, .tab-rel td { padding: .55rem .7rem; text-align: left; border-bottom: 1px solid var(--borda, #e2e8f0); }
+.tab-rel .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tab-rel td.alerta { color: var(--erro-forte, #b42318); font-weight: 700; }
+.diag { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; gap: .35rem; }
+.diag li { display: flex; gap: .6rem; align-items: flex-start; padding: .5rem .7rem; border-radius: 10px; background: var(--superficie-2, rgba(127,127,127,.06)); }
+.diag li small { display: block; color: var(--texto-2, inherit); }
+.diag .diag-grupo { background: none; padding: .6rem 0 0; font-weight: 700; text-transform: uppercase; font-size: .75rem; letter-spacing: .04em; }
+.diag .diag-resumo { font-weight: 700; }
+.diag-ok .diag-ico { color: #15803d; } .diag-aviso .diag-ico { color: #b45309; } .diag-erro .diag-ico { color: var(--erro-forte, #b42318); }
+.diag .diag-resumo.diag-ok { background: rgba(21,128,61,.12); } .diag .diag-resumo.diag-erro { background: rgba(180,35,24,.12); }
+#push-chaves { display: grid; gap: .6rem; margin-top: .75rem; }
+#push-chaves input { width: 100%; font-family: ui-monospace, monospace; font-size: .8rem; }
+@media print { .grafico { height: 110px; } .kpis-rel { grid-template-columns: repeat(3, 1fr); } }

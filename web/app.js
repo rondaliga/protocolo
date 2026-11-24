@@ -135,6 +135,7 @@
 
   // ------------------------------------------------------------------ assinatura (digitada / desenhada / só PIN)
   const assinaturas = {};            // 'novo' e 'conf' (ver assinatura.js)
+  let avisosMod = null;             // avisos no aparelho (avisos.js)
   let painelMod = null;              // trilha + painel de controle (painel.js)
 
   // ------------------------------------------------------------------ sessão / telas
@@ -153,6 +154,7 @@
 
   async function sair(evento = 'LOGOUT') {
     if (evento === 'LOGOUT') { clearTimeout(rascunhoTimer); limparRascunho(); }      // saída voluntária: nada fica; por inatividade o rascunho é mantido
+    if (avisosMod) { try { await avisosMod.aoSair(); } catch { /* segue */ } }
     try { await rpc('registrar_acesso', { p_evento: evento }); } catch { /* segue */ }
     try { await fetch(`${BASE}/auth/v1/logout`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${estado.sessao.access_token}` } }); } catch { /* segue */ }
     encerrarSessao(evento === 'LOGOUT_INATIVIDADE' ? 'Sessão encerrada por inatividade.' : '');
@@ -332,6 +334,7 @@
     trocarAba('protocolos');
     await recarregar();
     await verificarAlertas(false);
+    if (avisosMod) avisosMod.sincronizar();
     if (perfil.deveTrocarSenha || perfil.deveTrocarPin) abrirConta(true);
   }
 
@@ -919,7 +922,7 @@
         const txt = novos.length === 1 ? `Protocolo ${novos[0].numero}${novos[0].urgente ? ' URGENTE' : ''} ${TXT_SINO[r.papel] || 'precisa de atenção'}.`
           : `${novos.length} protocolos novos precisam da sua atenção.`;
         toast(txt);
-        try { if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('Livro de Protocolo', { body: txt, tag: 'protocolo' }); } catch { /* ignora */ }
+        try { if ('Notification' in window && Notification.permission === 'granted' && document.hidden && !(avisosMod && avisosMod.ativoNesteAparelho())) new Notification('Livro de Protocolo', { body: txt, tag: 'protocolo' }); } catch { /* ignora */ }
       }
     }
     estado.alertasVistos = ids;
@@ -1134,11 +1137,8 @@
     $('#lista-sino').addEventListener('click', (ev) => {
       const li = ev.target.closest('li[data-id]'); if (li) { $('#painel-sino').hidden = true; abrirDetalhe(li.dataset.id); }
     });
-    $('#btn-notif').addEventListener('click', async () => {
-      if (!('Notification' in window)) { toast('Este navegador não oferece avisos do sistema.', true); return; }
-      const r = await Notification.requestPermission();
-      toast(r === 'granted' ? 'Avisos ativados enquanto o sistema estiver aberto.' : 'Avisos não autorizados no navegador.', r !== 'granted');
-    });
+    $('#btn-notif').addEventListener('click', () => { $('#painel-sino').hidden = true; avisosMod.abrir(); });
+    $('#btn-avisos').addEventListener('click', () => { fecharMenuConta(false); avisosMod.abrir(); });
     document.addEventListener('pointerdown', iniciarAudio, { once: true });
 
     // menu "Minha conta"
@@ -1205,6 +1205,7 @@
       estado: () => estado, aplicarLogo, limparSetores: () => { estado.setores = null; },
       enderecoSistema: () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`),
     }));
+    avisosMod = window.criarAvisos({ $, rpc, toast }); avisosMod.ligar();
     ligarEventos(); painelMod.ligar();
     carregarIdentidade();
     const s = lerSessao();

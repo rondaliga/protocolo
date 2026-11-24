@@ -676,7 +676,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 9 arquivos', (select count(*) from public.schema_versao) = 9 and public.versao_schema() = 9);
+  perform t.afirma('schema_versao registra os 10 arquivos', (select count(*) from public.schema_versao) = 10 and public.versao_schema() = 10);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -692,7 +692,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '9', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '10', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -950,5 +950,77 @@ begin
   perform t.afirma('com o Brevo desativado o item fica pendente',
     (select status from public.fila_email where chave = 't9:desativado') = 'pendente');
   perform t.afirma('cadeia da trilha segue íntegra no fim', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
+end $$;
+
+-- 10. relatórios, verificação da instalação e avisos no aparelho
+do $$
+declare r text; v_log net.http_log%rowtype; v_pub text := repeat('B', 87); v_n int;
+begin
+  r := t.como('gestor@x', 'select public.painel_relatorio()::text');
+  perform t.afirma('relatório do gestor traz totais, tempos, setores, dias e atrasos',
+    (r::jsonb ? 'totais') and (r::jsonb ? 'tempo_horas') and (r::jsonb ? 'por_setor') and (r::jsonb ? 'por_dia') and (r::jsonb ? 'atrasados'), left(r, 200));
+  perform t.afirma('relatório: soma por dia = registrados',
+    (select sum((d->>'n')::int) from jsonb_array_elements(r::jsonb->'por_dia') d) = (r::jsonb->'totais'->>'registrados')::int, r);
+  perform t.afirma('relatório: concluídos + em andamento = registrados',
+    (r::jsonb->'totais'->>'concluidos')::int + (r::jsonb->'totais'->>'em_andamento')::int = (r::jsonb->'totais'->>'registrados')::int, r);
+  perform t.afirma('relatório não carrega descrição de documentos', r not like '%Ofício de teste imediato%');
+  r := t.como('gestor@x', $q$select public.painel_relatorio(current_date + 3, current_date)::text$q$);
+  perform t.afirma('relatório recusa período invertido', r like 'ERRO:%data final%', r);
+  r := t.como('gestor@x', $q$select public.painel_relatorio(current_date - 400, current_date)::text$q$);
+  perform t.afirma('relatório recusa período maior que 12 meses', r like 'ERRO:%12 meses%', r);
+  r := t.como('adm@x', 'select public.painel_relatorio()::text');
+  perform t.afirma('só o gestor gera relatório', r like 'ERRO:%', r);
+  perform t.afirma('geração do relatório fica na trilha', exists (select 1 from public.auditoria where acao = 'RELATORIO_GERADO'));
+
+  r := t.como('gestor@x', 'select public.painel_diagnostico()::text');
+  perform t.afirma('verificação da instalação lista os itens e não acusa erro', (r::jsonb->>'ok') = 'true' and jsonb_array_length(r::jsonb->'itens') >= 14, r);
+  perform t.afirma('verificação confirma RLS e acesso direto bloqueado',
+    exists (select 1 from jsonb_array_elements(r::jsonb->'itens') i where i->>'item' like 'Proteção por linha%' and i->>'nivel' = 'ok')
+    and exists (select 1 from jsonb_array_elements(r::jsonb->'itens') i where i->>'item' like 'Acesso direto%' and i->>'nivel' = 'ok'), r);
+  perform t.afirma('só o gestor roda a verificação', t.como('adm@x', 'select public.painel_diagnostico()::text') like 'ERRO:%');
+  execute 'grant select on public.email_brevo to authenticated';
+  perform t.afirma('verificação detecta tabela sensível exposta',
+    (t.como('gestor@x', 'select public.painel_diagnostico()->>''ok''')) = 'false');
+  execute 'revoke all on public.email_brevo from authenticated';
+
+  -- avisos no aparelho
+  perform t.afirma('inscrição é recusada enquanto o gestor não ativa o recurso',
+    t.como('adm@x', $q$select public.push_registrar('https://push.exemplo/abc', repeat('p', 87), repeat('a', 22))::text$q$) like 'ERRO:%não foram ativados%');
+  perform t.afirma('configuração de push recusa endereço sem https', public.admin_configurar_push('http://x', repeat('s', 30), v_pub) like 'ERRO:%');
+  perform t.afirma('configuração de push recusa segredo curto', public.admin_configurar_push('https://x.supabase.co/functions/v1/enviar-push', 'curto', v_pub) like 'ERRO:%');
+  perform t.afirma('configuração de push recusa chave pública incompleta', public.admin_configurar_push('https://x.supabase.co/functions/v1/enviar-push', repeat('s', 30), 'abc') like 'ERRO:%');
+  perform t.afirma('push configurado', public.admin_configurar_push('https://x.supabase.co/functions/v1/enviar-push', repeat('s', 30), v_pub) like 'OK:%');
+  perform t.afirma('usuário lê só a chave pública', t.como('adm@x', 'select public.push_chave_publica()') = v_pub);
+  perform t.afirma('navegador não lê a configuração do push', t.como('adm@x', 'select count(*)::text from public.push_config') like 'ERRO:%');
+  perform t.afirma('navegador não lê as inscrições diretamente', t.como('adm@x', 'select count(*)::text from public.push_inscricoes') like 'ERRO:%');
+  perform t.afirma('inscrição recusa endereço sem https',
+    t.como('adm@x', $q$select public.push_registrar('http://inseguro', repeat('p', 87), repeat('a', 22))::text$q$) like 'ERRO:%');
+  r := t.como('adm@x', $q$select public.push_registrar('https://push.exemplo/adm1', repeat('p', 87), repeat('a', 22), 'Teste')::text$q$);
+  perform t.afirma('ADM inscreve o aparelho', r like '%"ok": true%', r);
+
+  perform public._enfileirar_email('t10:push', 'TESTE', null, array['adm@x'], '[Protocolo] 2026-9999 chegou', 'corpo sem descrição');
+  select * into v_log from net.http_log where url like 'https://x.supabase.co/functions/%' order by id desc limit 1;
+  perform t.afirma('e-mail na fila também aciona o aviso no aparelho do destinatário',
+    v_log.id is not null and v_log.body->'subs'->0->>'endpoint' = 'https://push.exemplo/adm1'
+    and v_log.headers->>'x-push-secret' = repeat('s', 30), coalesce(v_log.body::text, 'sem chamada'));
+  perform t.afirma('aviso no aparelho traz só o número e texto genérico (LGPD)',
+    v_log.body->'payload'->>'title' = '2026-9999 chegou' and v_log.body->'payload'->>'body' not like '%descrição%', v_log.body::text);
+  select count(*) into v_n from net.http_log where url like 'https://x.supabase.co/functions/%';
+  perform public._enfileirar_email('t10:push-sem-aparelho', 'TESTE', null, array['gestor@x'], '[Protocolo] sem aparelho', 'x');
+  perform t.afirma('quem não ativou o aparelho não gera chamada', (select count(*) from net.http_log where url like 'https://x.supabase.co/functions/%') = v_n);
+
+  for i in 1..6 loop
+    perform t.como('adm@x', format($q$select public.push_registrar('https://push.exemplo/lim%s', repeat('p', 87), repeat('a', 22))::text$q$, i));
+  end loop;
+  perform t.afirma('cada usuário mantém no máximo 5 aparelhos',
+    (select count(*) from public.push_inscricoes i join public.perfis p on p.user_id = i.user_id where p.email = 'adm@x') = 5);
+  r := t.como('adm@x', $q$select public.push_remover('https://push.exemplo/lim6')::text$q$);
+  perform t.afirma('aparelho pode ser removido', r like '%"ok": true%', r);
+  perform t.afirma('aparelho removido some da lista', not exists (select 1 from public.push_inscricoes where endpoint = 'https://push.exemplo/lim6'));
+  perform t.afirma('painel informa push configurado e aparelhos',
+    (t.como('gestor@x', 'select (public.painel_resumo()->>''push_configurado'') || ''/'' || (public.painel_resumo()->>''push_aparelhos'')')) = 'true/4');
+  perform t.afirma('backup não leva segredo do push', t.como('gestor@x', 'select public.exportar_backup()::text') not like '%' || repeat('s', 30) || '%');
+  perform public.admin_desativar_push();
+  perform t.afirma('com push desativado ninguém recebe a chave', t.como('adm@x', 'select coalesce(public.push_chave_publica(), ''nenhuma'')') = 'nenhuma');
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='
