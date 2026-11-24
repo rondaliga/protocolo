@@ -665,3 +665,6 @@ h2 > .ico, h3 > .ico { width: 1.05em; height: 1.05em; margin-right: .5rem; color
 .atalho .ico { width: 1em; height: 1em; }
 .btn[data-ico] > span[data-ico] { display: inline-flex; }
 .sis-indice button { display: inline-flex; align-items: center; gap: .35rem; }
+#form-feriado { align-items: flex-end; }
+#form-feriado .btn { box-sizing: border-box; height: var(--altura-campo, 2.75rem); }
+#form-feriado input { box-sizing: border-box; height: 2.75rem; }
