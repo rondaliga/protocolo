@@ -62,9 +62,9 @@
   const tipoHtml = (x) => (x.tipo === 'judicial' ? '<span class="tipo-jud">JUDICIAL</span>' : '') + (x.urgente ? '<span class="tipo-urg">URGENTE</span>' : '');
   const ondeHtml = (x) => {
     if (x.status === 'concluido') return `${chip(x.status)}<small>Entregue a ${esc(x.e3_setor || '')}</small>`;
-    if (x.devolvido) return `<span class="chip devolvido">Devolvido ao ADM</span><small class="${x.sla_estourado ? 'atraso' : ''}">Devolvido por ${esc(x.devolvido_por || 'o setor')} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' · além do tempo' : ''}</small>`;
+    if (x.devolvido) return `<span class="chip devolvido">Devolvido ao ADM</span><small>Devolvido por ${esc(x.devolvido_por || 'o setor')} · ${esc(ha(x.aguardando_desde))}</small>`;
     const quem = x.status === 'pendente_adm' ? 'Aguardando o ADM' : `Aguardando ${esc(x.setor_destino_nome || 'o setor')}`;
-    return `${chip(x.status)}<small class="${x.sla_estourado ? 'atraso' : ''}">${quem} · ${esc(ha(x.aguardando_desde))}${x.sla_estourado ? ' · além do tempo' : ''}</small>`;
+    return `${chip(x.status)}<small>${quem} · ${esc(ha(x.aguardando_desde))}</small>`;
   };
 
   const estado = { sessao: null, perfil: null, aba: 'protocolos', pagina: 1, porPagina: 25, total: 0,
@@ -375,11 +375,10 @@
     $('#k-venc').textContent = r.vencidos; const dias = Number(r.alerta_dias ?? 2);
     $('#k-crit').textContent = `${r.criticos} vencem em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
     const opc = $('select[name="alerta"] option[value="criticos"]'); if (opc) opc.textContent = `Vence em até ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-    $('#k-sla').textContent = r.sla_estourado;
     const bd = $('#atalhos [data-alerta="devolvidos"] .n'); if (bd) bd.textContent = r.devolvidos ? ` (${r.devolvidos})` : '';
     const fx = $('#faixa-alertas');
-    fx.hidden = !(r.vencidos || r.sla_estourado) || estado.perfil.papel === 'portaria';
-    fx.innerHTML = `${window.ico('alerta')}<span>Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`} e ${r.sla_estourado === 1 ? '1 parada' : `${r.sla_estourado} paradas`} além do tempo máximo de recebimento.</span>`;
+    fx.hidden = !r.vencidos || estado.perfil.papel === 'portaria';
+    fx.innerHTML = `${window.ico('alerta')}<span>Atenção: ${r.vencidos === 1 ? '1 demanda com prazo vencido' : `${r.vencidos} demandas com prazo vencido`}.</span>`;
   }
 
   function celulaEtapa(em, user, setor) {
@@ -393,7 +392,7 @@
     if (seq !== estado.reqSeq) return;                    // resposta antiga: ignora
     estado.total = r.total;
     $('#tbody').innerHTML = r.itens.map((x) => `
-      <tr data-id="${esc(x.id)}" tabindex="0" class="${x.semaforo === 'vencido' && x.status !== 'concluido' ? 'linha-vencida' : x.sla_estourado ? 'linha-sla' : ''}">
+      <tr data-id="${esc(x.id)}" tabindex="0" class="${x.semaforo === 'vencido' && x.status !== 'concluido' ? 'linha-vencida' : ''}">
         <td class="num">${esc(x.numero)}</td>
         <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag" data-ico="camera" title="Com foto" aria-label="Com foto"></span>' : ''}</td>
         <td class="onde">${ondeHtml(x)}</td>
@@ -614,10 +613,19 @@
   // reduz a foto no navegador (máx. 1600 px, JPEG) — o banco aceita até 1,5 MB e só image/jpeg
   async function prepararFoto(arquivo) {
     if (!arquivo.type.startsWith('image/')) throw new Error('Escolha um arquivo de imagem.');
-    const bmp = await createImageBitmap(arquivo);
-    const esc1 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * esc1); c.height = Math.round(bmp.height * esc1);
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    let origem, larg, alt, liberar = () => {};
+    try {
+      origem = await createImageBitmap(arquivo, { imageOrientation: 'from-image' }); larg = origem.width; alt = origem.height; liberar = () => origem.close && origem.close();
+    } catch {                                           // aparelhos com pouca memória: decodifica pelo elemento <img>
+      const url = URL.createObjectURL(arquivo);
+      try {
+        origem = await new Promise((ok, err) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => err(new Error('Não foi possível ler a foto. Tente novamente ou escolha outra imagem.')); im.src = url; });
+        larg = origem.naturalWidth; alt = origem.naturalHeight;
+      } finally { URL.revokeObjectURL(url); }
+    }
+    const esc1 = Math.min(1, 1600 / Math.max(larg, alt));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(larg * esc1)); c.height = Math.max(1, Math.round(alt * esc1));
+    c.getContext('2d').drawImage(origem, 0, 0, c.width, c.height); liberar();
     for (const q of [0.8, 0.65, 0.5, 0.35]) {
       const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', q));
       if (blob && blob.size <= 1500000) return blob;
@@ -660,7 +668,7 @@
   }
 
   const MOV = {
-    reencaminhar: { titulo: 'Reencaminhar protocolo', ajuda: 'Use quando o documento foi encaminhado ao setor errado. O novo setor é avisado, o tempo máximo de recebimento recomeça e a justificativa fica registrada no histórico.',
+    reencaminhar: { titulo: 'Reencaminhar protocolo', ajuda: 'Use quando o documento foi encaminhado ao setor errado. O novo setor é avisado na hora (no sistema e por e-mail) e a justificativa fica registrada no histórico.',
       botao: 'Reencaminhar', ok: (r) => `${r.numero}: reencaminhado e novo setor avisado.`, lugar: 'Ex.: documento é da Farmácia, não do Jurídico' },
     devolver: { titulo: 'Devolver ao ADM', ajuda: 'Use quando o documento não é do seu setor. O ADM é avisado para reencaminhá-lo ao setor correto. A justificativa e o responsável ficam registrados.',
       botao: 'Devolver ao ADM', ok: (r) => `${r.numero}: devolvido ao ADM.`, lugar: 'Ex.: assunto é da Farmácia, não do nosso setor' },
@@ -900,9 +908,9 @@
     const n = $('#sino-n'); n.textContent = itens.length; n.hidden = itens.length === 0;
     document.title = `${itens.length ? `(${itens.length}) ` : ''}Livro de Protocolo · ${CFG.UNIDADE}`;
     $('#vazio-sino').hidden = itens.length > 0;
-    $('#lista-sino').innerHTML = itens.map((x) => `<li data-id="${esc(x.id)}" class="${x.sla_estourado || x.semaforo === 'vencido' ? 'alerta' : ''}">
+    $('#lista-sino').innerHTML = itens.map((x) => `<li data-id="${esc(x.id)}" class="${x.semaforo === 'vencido' ? 'alerta' : ''}">
       <strong>${esc(x.numero)}</strong> ${tipoHtml(x)} ${esc(TXT_SINO[r.papel] || '')}
-      <small>${x.aguardando_desde ? esc(ha(x.aguardando_desde)) : ''}${x.prazo_data ? ` · prazo ${data(x.prazo_data + 'T12:00:00')} (${esc(diasTxt(x))})` : ''}${x.sla_estourado ? ' · além do tempo' : ''}</small></li>`).join('');
+      <small>${x.aguardando_desde ? esc(ha(x.aguardando_desde)) : ''}${x.prazo_data ? ` · prazo ${data(x.prazo_data + 'T12:00:00')} (${esc(diasTxt(x))})` : ''}</small></li>`).join('');
     const ids = new Set(itens.map((x) => `${x.id}:${x.status}`));
     if (avisar && estado.alertasVistos) {
       const novos = itens.filter((x) => !estado.alertasVistos.has(`${x.id}:${x.status}`));
@@ -997,27 +1005,53 @@
     $('#inp-foto-camera').addEventListener('change', (ev) => usarFoto(ev.target.files[0], ev.target));
     $('#btn-foto-arquivo').addEventListener('click', () => $('#inp-foto').click());
     $('#btn-foto-remover').addEventListener('click', () => { limparFoto(); agendarRascunho(); });
-    // "Tirar foto": no celular abre a câmera do aparelho; no computador abre a webcam numa janela
-    let fluxo = null;
-    const pararCamera = () => { if (fluxo) fluxo.getTracks().forEach((t) => t.stop()); fluxo = null; $('#cam-video').srcObject = null; };
-    $('#btn-foto-camera').addEventListener('click', async () => {
-      const toque = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-      if (toque || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $('#inp-foto-camera').click(); return; }
-      const dlg = $('#dlg-camera'), er = $('#cam-erro'); er.hidden = true; $('#btn-capturar').disabled = true;
-      dlg.showModal();
+    // "Tirar foto": a câmera abre DENTRO do sistema (celular e computador), sem trocar de aplicativo.
+    // Isso evita o erro de alguns Androids, que fecham o navegador ao abrir o app de câmera e perdem a foto.
+    // Se o navegador negar a câmera, usa a câmera do aparelho (campo de arquivo) como plano B.
+    let fluxo = null, lado = 'environment';
+    const pararCamera = () => { if (fluxo) fluxo.getTracks().forEach((t) => t.stop()); fluxo = null; const v = $('#cam-video'); v.srcObject = null; };
+    const abrirFluxo = async () => {
+      const tentativas = [
+        { video: { facingMode: { ideal: lado }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: { ideal: lado } }, audio: false },
+        { video: true, audio: false },
+      ];
+      let ultimo;
+      for (const c of tentativas) { try { return await navigator.mediaDevices.getUserMedia(c); } catch (e) { ultimo = e; if (e && e.name === 'NotAllowedError') break; } }
+      throw ultimo;
+    };
+    const ligarCamera = async () => {
+      const er = $('#cam-erro'); er.hidden = true; $('#btn-capturar').disabled = true; pararCamera();
       try {
-        fluxo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } }, audio: false });
-        const v = $('#cam-video'); v.srcObject = fluxo; await v.play().catch(() => {});
+        fluxo = await abrirFluxo();
+        const v = $('#cam-video'); v.srcObject = fluxo;
+        await new Promise((ok) => { if (v.readyState >= 1) ok(); else v.addEventListener('loadedmetadata', ok, { once: true }); setTimeout(ok, 4000); });
+        await v.play().catch(() => {});
         $('#btn-capturar').disabled = false;
-      } catch {
-        dlg.close(); toast('Não foi possível usar a câmera. Escolha uma foto do aparelho.', true); $('#inp-foto-camera').click();
+        const trilhas = fluxo.getVideoTracks(); const cfg = trilhas[0] && trilhas[0].getSettings ? trilhas[0].getSettings() : {};
+        if (cfg.facingMode) lado = cfg.facingMode;
+        return true;
+      } catch (e) {
+        pararCamera(); return e;
+      }
+    };
+    $('#btn-foto-camera').addEventListener('click', async () => {
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { $('#inp-foto-camera').click(); return; }
+      const dlg = $('#dlg-camera'); dlg.showModal();
+      const r = await ligarCamera();
+      if (r !== true) {
+        dlg.close();
+        toast(r && r.name === 'NotAllowedError' ? 'A câmera está bloqueada neste navegador. Libere o acesso no cadeado do endereço ou escolha a foto da galeria.' : 'Não foi possível abrir a câmera. Use a câmera do aparelho ou escolha da galeria.', true);
+        if (!(r && r.name === 'NotAllowedError')) $('#inp-foto-camera').click();
       }
     });
+    $('#btn-cam-trocar').addEventListener('click', async () => { lado = lado === 'environment' ? 'user' : 'environment'; const r = await ligarCamera(); if (r !== true) { $('#cam-erro').textContent = 'Esta câmera não está disponível neste aparelho.'; $('#cam-erro').hidden = false; lado = lado === 'environment' ? 'user' : 'environment'; await ligarCamera(); } });
     $('#btn-capturar').addEventListener('click', async () => {
       const v = $('#cam-video'); if (!v.videoWidth) return;
-      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
-      c.getContext('2d').drawImage(v, 0, 0);
-      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92));
+      const esc1 = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+      const c = document.createElement('canvas'); c.width = Math.round(v.videoWidth * esc1); c.height = Math.round(v.videoHeight * esc1);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
       $('#dlg-camera').close();
       if (blob) await usarFoto(blob, null);
     });
@@ -1150,11 +1184,14 @@
     setInterval(checarInatividade, 1000);
     $('#inat-continuar').addEventListener('click', () => { estado.ultimaAtividade = Date.now(); $('#dlg-inatividade').close(); });
     $('#inat-sair').addEventListener('click', () => { $('#dlg-inatividade').close(); sair(); });
+    // Avisos imediatos: confere as pendências a cada 10 s; a lista recarrega a cada 30 s.
+    let ciclo = 0;
     setInterval(() => {
       if (!estado.perfil) return;
       verificarAlertas(true);
-      if (estado.aba === 'protocolos' && !$('dialog[open]') && !document.hidden) recarregar();
-    }, 30000);
+      ciclo += 1;
+      if (ciclo % 3 === 0 && estado.aba === 'protocolos' && !$('dialog[open]') && !document.hidden) recarregar();
+    }, 10000);
   }
 
   // ------------------------------------------------------------------ inicialização

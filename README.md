@@ -60,9 +60,9 @@ legacy/                    versão Python anterior (referência)
    **Por fim, rode `supabase/04_logo_horas_exclusoes.sql`** (logo, formatos de hora, salvar parâmetros de uma vez e exclusões — seção 4D).
    **Depois rode `supabase/05_melhorias.sql`** (versão do banco, índices, backup e retenção — seção 4E).
    **Por fim, rode `supabase/06_inatividade.sql`** (tempo de inatividade ajustável — seção 4E).
-   **Depois rode `supabase/07_mfa.sql`** (verificação em duas etapas — seção 4F) **e `supabase/08_fluxo.sql`** (devolução, reencaminhamento, atalhos e lembretes em escada — seção 4G).
+   **Depois rode `supabase/07_mfa.sql`** (verificação em duas etapas — seção 4F) **`supabase/08_fluxo.sql`** (devolução, reencaminhamento e atalhos — seção 4G) **e `supabase/09_alertas_imediatos.sql`** (alertas imediatos e e-mail pelo Brevo — seção 4H).
    **Ordem obrigatória: schema.sql → 02 → 03 → 04 → 05 → 06 → 07.** Se rodar um arquivo antigo de novo, rode os seguintes em seguida.
-   **Atalho:** cole `supabase/instalacao_completa.sql` (os oito arquivos na ordem certa, gerado por `scripts/gerar_instalacao.py`).
+   **Atalho:** cole `supabase/instalacao_completa.sql` (os nove arquivos na ordem certa, gerado por `scripts/gerar_instalacao.py`).
    Serve para instalação nova **e** para atualização, e pode ser executado quantas vezes quiser.
 3. **Authentication → Sign In / Providers → Email**: mantenha *Email* ligado e **desligue "Allow new users to sign up"**
    (cadastro público desabilitado — só o administrador cria usuários). Defina senha mínima de 10 caracteres.
@@ -144,9 +144,9 @@ ADM depois do prazo e só então foi para a superintendência. A versão 2 ataca
 | Ninguém sabia que tinha chegado | A Portaria registra **no ato**, com **foto** do envelope/capa (obrigatória para judiciais). O ADM recebe **sino + som + aviso do navegador + e-mail** na hora. |
 | Ninguém sabia o prazo | Todo judicial nasce com **prazo padrão** (5 dias úteis; o ADM ajusta ao prazo real do documento, com justificativa e PIN). Coluna **Prazo** com semáforo: No prazo · Atenção (≤ 5 dias) · Vence em breve (≤ 2) · **VENCIDO**. |
 | Ninguém sabia onde estava | Coluna **Onde está agora**: "Aguardando o ADM · há 3 h 20 min" / "Aguardando Superintendência · há 1 dia". |
-| Ficou parado numa etapa | **Tempo máximo (SLA) por etapa**, contado só em **horas úteis** (08h–17h, seg–sex): ADM 4 h (2 h se urgente); setor 9 h = 1 dia útil (4 h se urgente). Estourou → e-mail ao responsável **e ao gestor**, registro na auditoria e destaque no painel. |
+| Ficou parado numa etapa | **Aviso imediato, sem prazo de espera**: ao registrar, o ADM é avisado na hora (sino e e-mail); ao encaminhar, o setor de destino é avisado na hora. Os avisos de **prazo do documento** (vence em breve / vencido) continuam. |
 | Foi para o setor errado / passou por todos | O **ADM escolhe o setor de destino** ao receber (ex.: Superintendência). Só esse setor enxerga e recebe. |
-| Sem cobrança por etapa | Cada etapa mostra quem recebeu, quando e quanto tempo levou; KPIs "Prazo vencido" e "Parados além do tempo" no painel. |
+| Sem cobrança por etapa | Cada etapa mostra quem recebeu, quando e quanto tempo levou; KPI "Prazo vencido" no painel. |
 
 **Fluxo ideal:** chegou → Portaria fotografa e registra (1 min) → ADM é avisado na hora, recebe e escolhe o destino → o setor
 é avisado na hora e confirma → concluído. Se alguém não agir no tempo, o gestor é avisado automaticamente.
@@ -171,7 +171,7 @@ A rotina **não usa a chave `service_role`**: o segredo só permite verificar SL
 ```sql
 select * from public.parametros;                                   -- veja todos os valores
 select public.admin_definir_parametro('prazo_judicial_dias', '10'); -- prazo padrão dos judiciais (dias úteis)
-select public.admin_definir_parametro('sla_adm_min', '1h30');       -- tempo máximo do ADM (aceita 90min, 1:30, 1h30, 1d…)
+select public.admin_definir_parametro('sessao_inatividade_min', '3h'); -- logout por inatividade (aceita 90min, 1:30, 1h30…)
 select public.admin_definir_parametro('expediente_inicio', '7h30'); -- hora do início do expediente (HH:MM)
 select public.admin_definir_parametro('foto_obrigatoria_judicial', 'false');
 select public.admin_cadastrar_feriado('2027-02-09', 'Carnaval');    -- feriados móveis/estaduais/municipais
@@ -253,7 +253,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
 
 **Instalação e manutenção**
-- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 8 de 8") e é idempotente.
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 9 de 9") e é idempotente.
 - `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
 
 **Inatividade**
@@ -290,20 +290,32 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 
 ### Checklist de implantação
 1. Projeto Supabase criado (São Paulo) e cadastro público desligado.
-2. `instalacao_completa.sql` executado; painel mostra "8 de 8".
+2. `instalacao_completa.sql` executado; painel mostra "9 de 9".
 3. Variáveis do GitHub (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `UNIDADE`, `TIMEZONE`) e Pages em "GitHub Actions".
 4. Primeiro gestor criado e senha/PIN trocados no primeiro acesso.
 5. Rate limits do Supabase revisados; baixar um backup e conferir a trilha ("Trilha íntegra").
 5b. Segredos `SUPABASE_DB_URL` e `BACKUP_PASSPHRASE` cadastrados e um backup de teste rodado em *Actions*; o gestor ativou as **2 etapas** (e há pelo menos dois gestores antes de ligar a exigência).
 6. Fazer um protocolo de teste com os quatro perfis.
 
-## 4G. Devolução, reencaminhamento, atalhos e lembretes em escada (migração 08)
+## 4G. Devolução, reencaminhamento e atalhos (migração 08)
 
 - **Devolver ao ADM** (botão no detalhe, para o setor de destino ou o gestor): o documento não é do setor. Exige justificativa (10 a 500 caracteres) e PIN; o destino é zerado, o ADM é avisado e o protocolo aparece como *Devolvido ao ADM* nas pendências dele. Nenhum setor consegue receber um protocolo devolvido.
-- **Reencaminhar** (ADM ou gestor, enquanto o protocolo aguarda o setor): troca o setor de destino com justificativa e PIN, avisa o novo setor e reinicia o tempo máximo. O setor anterior deixa de ver o protocolo.
+- **Reencaminhar** (ADM ou gestor, enquanto o protocolo aguarda o setor): troca o setor de destino com justificativa e PIN, avisa o novo setor na hora. O setor anterior deixa de ver o protocolo.
 - Cada movimentação fica em histórico imutável (tabela `movimentacoes`), aparece no *Histórico de alterações* do protocolo, na trilha (`PROTOCOLO_DEVOLVIDO`, `PROTOCOLO_REENCAMINHADO`) e no backup.
 - **Atalhos da lista:** Todos · Meus pendentes · Urgentes · Vencem em 7 dias · Devolvidos. O último filtro usado é lembrado por usuário, neste navegador.
-- **Lembretes em escada** (Sistema → Prazos e regras → *Lembretes quando o tempo máximo é ultrapassado*): 1º aviso ao responsável quando o tempo estoura; 2º aviso após `sla_lembrete_min` (padrão 4 h úteis); aviso também ao gestor após `sla_escalada_min` (padrão 8 h úteis). Sem e-mail cadastrado no responsável, o aviso vai direto ao gestor. A escada recomeça a cada novo encaminhamento.
+- **Lembretes em escada** — *substituídos na migração 09:* não há mais tempo de espera; o aviso sai no ato (seção 4H).
+
+## 4H. Alertas imediatos e e-mail pelo Brevo (migração 09)
+
+- **Sem tempo de espera:** foram removidos o tempo máximo de recebimento (SLA), os lembretes em escada, o KPI/filtro "Parados além do tempo" e os parâmetros `sla_*`. O **ADM é avisado no ato do registro** e o **setor no ato do encaminhamento** (sino a cada 10 s + e-mail na hora). Os avisos de **prazo do documento** continuam.
+- **E-mail imediato:** toda entrada na fila de e-mails é enviada na hora pela API do Brevo, usando a extensão `pg_net` do Supabase. A chave fica na tabela `email_brevo` (sem acesso pelo navegador, fora do backup). Se o Brevo falhar, o item volta à fila e a rotina de SMTP do GitHub (seção 4B) tenta de novo.
+- **Painel → Sistema:** cartão *Envio imediato (Brevo)* e botão **Enviar e-mail de teste**.
+- **Passo a passo completo, sem prompt de comando: `GUIA_BREVO.md`.**
+- Funções para o SQL Editor: `admin_configurar_brevo(chave, remetente, nome)` e `admin_desativar_brevo()`.
+
+### Foto no celular e texto longo
+- **Tirar foto** agora abre a câmera **dentro do sistema** (também no celular), sem trocar de aplicativo — corrige o erro em alguns Android. Há botão *Trocar câmera*; se o navegador negar a câmera, abre a câmera do aparelho ou a galeria.
+- Descrições longas sem espaços (ex.: "AAAA…") quebram dentro do quadro e não alteram mais a largura da lista nem da gaveta de detalhes.
 
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 
@@ -381,7 +393,7 @@ O botão "Baixar backup (JSON)" do painel continua útil para uma cópia imediat
 # Schema (RLS, sequência, imutabilidade, PIN, auditoria) — precisa de psql e um PostgreSQL 15+
 PGHOST=localhost PGUSER=postgres bash supabase/tests/run_local.sh        # banco descartável "protocolo_teste"
 
-# (o run_local.sh aplica schema.sql + 02 + 03 + 04 + 05 + 06 + 07 (do 05 em diante, cada um duas vezes, para provar a idempotência) e roda 300 verificações: horas úteis e formatos de hora, SLA, foto, e-mails, painel, primeiro acesso, trilha, exportação, logo e exclusões)
+# (o run_local.sh aplica schema.sql + 02 + 03 + 04 + 05 + 06 + 07 (do 05 em diante, cada um duas vezes, para provar a idempotência) e roda 350+ verificações: horas úteis e formatos de hora, alertas imediatos, e-mail pelo Brevo, foto, e-mails, painel, primeiro acesso, trilha, exportação, logo e exclusões)
 
 # Navegador de ponta a ponta (opcional; precisa de Playwright e Pillow): site real + schema real
 bash tests/e2e/preparar_db.sh && SUPABASE_URL=http://127.0.0.1:5057 SUPABASE_ANON_KEY=chave-de-teste-0000000000 python3 scripts/build_site.py \

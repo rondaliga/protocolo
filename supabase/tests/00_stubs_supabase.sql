@@ -33,3 +33,16 @@ create or replace function storage.foldername(name text) returns text[] language
 $$ select string_to_array(name, '/') $$;
 grant usage on schema storage to anon, authenticated, service_role;
 grant select, insert, delete on storage.objects to authenticated;
+
+-- pg_net (stub mínimo): registra a requisição e responde 201 na hora. SÓ PARA TESTES LOCAIS.
+create schema if not exists net;
+create table if not exists net.http_log (id bigint generated always as identity primary key, url text, body jsonb, headers jsonb);
+create table if not exists net._http_response (id bigint primary key, status_code int, content text, timed_out boolean, error_msg text, created timestamptz default now());
+create or replace function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000)
+returns bigint language plpgsql as $$
+declare v bigint;
+begin
+  insert into net.http_log (url, body, headers) values (url, body, headers) returning id into v;
+  insert into net._http_response (id, status_code, content) values (v, case when headers->>'api-key' like 'chave-ruim%' then 401 else 201 end, '{"messageId":"x"}');
+  return v;
+end $$;

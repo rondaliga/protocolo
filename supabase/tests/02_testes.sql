@@ -241,8 +241,8 @@ begin
 
   r := t.como('gestor@x', format($q$select (public.detalhe_protocolo(%s)->>'prazo_data') || '|' || (public.detalhe_protocolo(%s)->>'tipo') || '|' || (public.detalhe_protocolo(%s)->>'n_fotos')$q$, v_id, v_id, v_id));
   perform t.afirma('prazo padrão de 5 dias úteis, tipo e foto', r = public._somar_dias_uteis((now() at time zone 'America/Fortaleza')::date, 5)::text || '|judicial|1', r);
-  r := t.como('gestor@x', format($q$select (sla_limite > now())::text from public.v_livro where id=%s$q$, v_id));
-  perform t.afirma('SLA do ADM definido no futuro', r = 'true', r);
+  r := t.como('gestor@x', format($q$select (sla_limite is null)::text from public.v_livro where id=%s$q$, v_id));
+  perform t.afirma('não há mais tempo máximo de recebimento (alerta imediato)', r = 'true', r);
 
   -- visibilidade da foto
   r := t.como('adm@x', format($q$select count(*)::text from public.protocolo_fotos where protocolo_id=%s$q$, v_id));
@@ -311,22 +311,20 @@ begin
   r := t.como('gestor@x', format($q$select semaforo from public.v_livro where id=%s$q$, v_id));
   perform t.afirma('semáforo ok com 20 dias', r = 'ok', r);
   alter table public.protocolos disable trigger user;
-  update public.protocolos set prazo_data = (now() at time zone 'America/Fortaleza')::date - 1,
-                               sla_limite = now() - interval '1 hour' where id = v_id;
+  update public.protocolos set prazo_data = (now() at time zone 'America/Fortaleza')::date - 1 where id = v_id;
   alter table public.protocolos enable trigger user;
   r := t.como('gestor@x', format($q$select semaforo || '/' || sla_estourado::text from public.v_livro where id=%s$q$, v_id));
-  perform t.afirma('semáforo vencido e SLA estourado', r = 'vencido/true', r);
+  perform t.afirma('semáforo vencido, sem SLA estourado', r = 'vencido/false', r);
   r := t.como('gestor@x', $q$select (public.resumo_livro()->>'vencidos') || '/' || (public.resumo_livro()->>'sla_estourado')$q$);
-  perform t.afirma('KPIs de vencidos e SLA', r = '1/1', r);
+  perform t.afirma('KPIs de vencidos (SLA sempre zero)', r = '1/0', r);
   r := t.como('gestor@x', $q$select (public.listar_livro(null,null,null,null,25,0,'vencidos')->>'total')$q$);
   perform t.afirma('filtro de vencidos', r = '1', r);
   r := t.como('gestor@x', $q$select (public.minhas_pendencias()->>'total')$q$);
   perform t.afirma('gestor vê pendências críticas', r::int >= 1, r);
 
   r := public._verificar_sla()::text;
-  perform t.afirma('verificação gera avisos novos', r::int >= 2, r);
-  perform t.afirma('1º aviso de SLA vai só ao responsável (setor atual)',
-    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:1:%' and destinatarios = array['far@x']));
+  perform t.afirma('verificação gera aviso de prazo', r::int >= 1, r);
+  perform t.afirma('não existe mais aviso de tempo máximo (SLA)', not exists (select 1 from public.fila_email where chave like 'sla:%'));
   perform t.afirma('aviso de prazo vencido enfileirado', exists (select 1 from public.fila_email where chave = 'vencido:' || v_id));
   r := public._verificar_sla()::text;
   perform t.afirma('verificação repetida não duplica avisos', r = '0', r);
@@ -515,15 +513,15 @@ begin
 
   -- ---------- parâmetros e feriados ----------
   r := t.como('gestor@x', $q$select count(*)::text from jsonb_array_elements(public.painel_listar_parametros()) e where e->>'tipo' in ('numero','booleano','texto','hora','duracao')$q$);
-  perform t.afirma('parâmetros listados com tipo', r::int >= 12, r);
+  perform t.afirma('parâmetros listados com tipo', r::int >= 10, r);
   r := t.como('gestor@x', $q$select public.painel_definir_parametro('prazo_judicial_dias','10')::text$q$);
   perform t.afirma('gestor altera parâmetro', (r::jsonb->>'alterado') = 'true' and public._param_int('prazo_judicial_dias', 0) = 10, r);
   perform public.admin_definir_parametro('prazo_judicial_dias', '5');
-  foreach r in array array['sla_adm_min|2min','sla_adm_min|abc','expediente_inicio|25:00','prazo_judicial_dias|400','prazo_judicial_dias|abc','expediente_fim|7','expediente_inicio|18','gestor_ignora_segregacao|talvez','url_sistema|http://x.com','chave_inexistente|1'] loop
+  foreach r in array array['sessao_inatividade_min|2min','sessao_inatividade_min|abc','expediente_inicio|25:00','prazo_judicial_dias|400','prazo_judicial_dias|abc','expediente_fim|7','expediente_inicio|18','gestor_ignora_segregacao|talvez','url_sistema|http://x.com','chave_inexistente|1'] loop
     perform t.afirma('parâmetro inválido recusado: ' || r,
       t.como('gestor@x', format($q$select public.painel_definir_parametro(%L,%L)::text$q$, split_part(r,'|',1), split_part(r,'|',2))) like 'ERRO:%');
   end loop;
-  r := t.como('adm@x', $q$select public.painel_definir_parametro('sla_adm_min','8h')::text$q$);
+  r := t.como('adm@x', $q$select public.painel_definir_parametro('sessao_inatividade_min','8h')::text$q$);
   perform t.afirma('ADM não altera parâmetros', r like 'ERRO:%gestor%', r);
   r := t.como('gestor@x', $q$select public.painel_salvar_feriado('2027-02-09','Carnaval')::text$q$);
   perform t.afirma('gestor cadastra feriado', (r::jsonb->>'ok') = 'true' and public._eh_util('2027-02-09') = false, r);
@@ -577,23 +575,22 @@ begin
      and public._parse_duracao_min('1,5') = 90 and public._parse_duracao_min('2h') = 120 and public._parse_duracao_min('1:30') = 90
      and public._parse_duracao_min('1d') = 540 and public._parse_duracao_min('4 horas 15 min') = 255 and public._parse_duracao_min('abc') is null,
      coalesce(public._parse_duracao_min('1d')::text, 'nulo'));
-  perform t.afirma('parâmetros antigos migrados', not exists (select 1 from public.parametros where chave like 'sla\_%\_horas')
-     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:00'
+  perform t.afirma('parâmetros antigos migrados', not exists (select 1 from public.parametros where chave like 'sla\_%')
      and (select valor from public.parametros where chave = 'expediente_inicio') = '08:00');
 
-  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"3h","expediente_fim":"7:00"}'::jsonb)::text$q$);
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sessao_inatividade_min":"3h","expediente_fim":"7:00"}'::jsonb)::text$q$);
   perform t.afirma('salvar em lote é tudo-ou-nada (expediente incoerente)', r like 'ERRO:%expediente%'
-     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:00', r);
-  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"xx"}'::jsonb)::text$q$);
-  perform t.afirma('salvar em lote nomeia o campo inválido', r like 'ERRO:%sla_adm_min%', r);
-  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_adm_min":"4h30","expediente_inicio":"7h30","alerta_prazo_dias":"3","foto_obrigatoria_judicial":"true"}'::jsonb)::text$q$);
+     and (select valor from public.parametros where chave = 'sessao_inatividade_min') = '6:00', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sessao_inatividade_min":"xx"}'::jsonb)::text$q$);
+  perform t.afirma('salvar em lote nomeia o campo inválido', r like 'ERRO:%sessao_inatividade_min%', r);
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sessao_inatividade_min":"4h30","expediente_inicio":"7h30","alerta_prazo_dias":"3","foto_obrigatoria_judicial":"true"}'::jsonb)::text$q$);
   perform t.afirma('salvar vários parâmetros de uma vez', (r::jsonb->>'alterados') = '3'
-     and (select valor from public.parametros where chave = 'sla_adm_min') = '4:30'
+     and (select valor from public.parametros where chave = 'sessao_inatividade_min') = '4:30'
      and (select valor from public.parametros where chave = 'expediente_inicio') = '07:30', r);
   perform t.afirma('um único evento de auditoria para o lote', (select count(*) from public.auditoria where acao = 'PARAMETROS_ALTERADOS') = 1);
   r := t.como('adm@x', $q$select public.painel_salvar_parametros('{"alerta_prazo_dias":"1"}'::jsonb)::text$q$);
   perform t.afirma('ADM não salva parâmetros', r like 'ERRO:%gestor%', r);
-  perform public.admin_definir_parametro('sla_adm_min', '4:00'); perform public.admin_definir_parametro('expediente_inicio', '08:00');
+  perform public.admin_definir_parametro('sessao_inatividade_min', '6:00'); perform public.admin_definir_parametro('expediente_inicio', '08:00');
   perform public.admin_definir_parametro('alerta_prazo_dias', '2');
   perform t.afirma('horas úteis seguem funcionando', public._somar_horas_uteis(now(), 1.5) > now());
 
@@ -679,7 +676,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 8 arquivos', (select count(*) from public.schema_versao) = 8 and public.versao_schema() = 8);
+  perform t.afirma('schema_versao registra os 9 arquivos', (select count(*) from public.schema_versao) = 9 and public.versao_schema() = 9);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -695,7 +692,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '8', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '9', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -834,7 +831,7 @@ begin
   r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Encaminhar à Farmácia, setor correto','2222')::text$q$, v_id, v_far));
   perform t.afirma('ADM reencaminha à Farmácia', (r::jsonb->>'ok') = 'true', r);
   perform t.afirma('reencaminhamento limpa a devolução e define o novo destino',
-    exists (select 1 from public.protocolos where id = v_id and not devolvido and setor_destino_id = v_far and sla_limite > now()));
+    exists (select 1 from public.protocolos where id = v_id and not devolvido and setor_destino_id = v_far and sla_limite is null));
   r := t.como('adm@x', format($q$select public.reencaminhar_protocolo(%s,%s,'Mesmo setor de novo, sem motivo','2222')::text$q$, v_id, v_far));
   perform t.afirma('não reencaminha ao setor em que já está', r like 'ERRO:%já está%', r);
   perform t.afirma('Farmácia passa a ver; Jurídico não',
@@ -852,36 +849,14 @@ begin
     exists (select 1 from public.fila_email where evento = 'REENCAMINHADO' and protocolo_id = v_id and destinatarios = array['far@x'])
     and exists (select 1 from public.auditoria where acao = 'PROTOCOLO_REENCAMINHADO' and protocolo_id = v_id and detalhes->>'para' = 'Farmácia'));
 
-  -- lembretes em escada: simula a passagem do tempo como dono do banco
-  alter table public.protocolos disable trigger user;
-  update public.protocolos set sla_limite = now() - interval '1 minute' where id = v_id;
-  alter table public.protocolos enable trigger user;
-  perform public._verificar_sla();
-  perform t.afirma('escada nível 1: só o responsável',
-    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:1:%' and destinatarios = array['far@x']));
-  update public.parametros set valor = '1:00' where chave = 'sla_lembrete_min';
-  update public.parametros set valor = '200:00' where chave = 'sla_escalada_min';
-  alter table public.protocolos disable trigger user;
+  -- sem escada de lembretes: o aviso ao setor saiu na hora do reencaminhamento e não há tempo de espera
   update public.protocolos set sla_limite = now() - interval '6 days' where id = v_id;
-  alter table public.protocolos enable trigger user;
   perform public._verificar_sla();
-  perform t.afirma('escada nível 2: novo lembrete só ao responsável',
-    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:2:%' and destinatarios = array['far@x']));
-  update public.parametros set valor = '4:00' where chave = 'sla_escalada_min';
-  update public.parametros set valor = '1:00' where chave = 'sla_lembrete_min';
-  perform public._verificar_sla();
-  perform t.afirma('escada nível 3: responsável e gestor',
-    exists (select 1 from public.fila_email where chave like 'sla:' || v_id || ':3:3:%' and destinatarios @> array['far@x','gestor@x']));
-  perform t.afirma('cada nível é avisado uma única vez', public._verificar_sla() = 0 or true);
-  select count(*) into v_n from public.fila_email where chave like 'sla:' || v_id || ':3:%';
-  perform public._verificar_sla();
-  perform t.afirma('verificação repetida não duplica os níveis', (select count(*) from public.fila_email where chave like 'sla:' || v_id || ':3:%') = v_n);
-  update public.parametros set valor = '4:00' where chave = 'sla_lembrete_min';
-  update public.parametros set valor = '8:00' where chave = 'sla_escalada_min';
-  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_lembrete_min":"6:00","sla_escalada_min":"2:00"}'::jsonb)::text$q$, 'aal1');
-  perform t.afirma('aviso ao gestor não pode vir antes do 2º aviso', r like 'ERRO:%antes do 2º aviso%', r);
-  perform t.afirma('parâmetros da escada continuam nos valores anteriores após a recusa',
-    (select valor from public.parametros where chave = 'sla_lembrete_min') = '4:00');
+  perform t.afirma('sla_limite é sempre zerado e nenhum aviso de SLA é gerado',
+    exists (select 1 from public.protocolos where id = v_id and sla_limite is null)
+    and not exists (select 1 from public.fila_email where chave like 'sla:%'));
+  r := t.como('gestor@x', $q$select public.painel_salvar_parametros('{"sla_lembrete_min":"6:00"}'::jsonb)::text$q$, 'aal1');
+  perform t.afirma('parâmetros de SLA não existem mais', r like 'ERRO:%sla_lembrete_min%', r);
 
   -- conclusão e travas finais
   r := t.como('far@x', format($q$select public.confirmar_etapa(%s,3,'4444')::text$q$, v_id));
@@ -909,5 +884,71 @@ begin
   perform t.afirma('troca de PIN após desbloqueio', (r::jsonb->>'ok') = 'true', r);
   r := t.como('far@x', $q$select public.alterar_meu_pin('7351','4455')::text$q$);
   perform t.afirma('PIN novo funciona', (r::jsonb->>'ok') = 'true', r);
+end $$;
+
+-- 9. alertas imediatos e e-mail pelo Brevo (pg_net simulado)
+do $$
+declare r text; v_log net.http_log%rowtype; v_k text := 'chave-brevo-de-teste-0123456789';
+begin
+  perform public._enfileirar_email('t9:sem-brevo', 'TESTE', null, array['adm@x'], 'Sem Brevo', 'corpo');
+  perform t.afirma('sem Brevo configurado o item fica pendente (plano B: SMTP)',
+    (select status from public.fila_email where chave = 't9:sem-brevo') = 'pendente');
+  perform t.afirma('configuração do Brevo é recusada com chave curta', public.admin_configurar_brevo('curta', 'a@b.com') like 'ERRO:%');
+  perform t.afirma('configuração do Brevo é recusada com e-mail inválido', public.admin_configurar_brevo(v_k, 'sem-arroba') like 'ERRO:%');
+  perform t.afirma('Brevo configurado', public.admin_configurar_brevo(v_k, 'Avisos@Instituicao.org', 'Livro CECAN') like 'OK:%');
+
+  perform public._enfileirar_email('t9:com-brevo', 'TESTE', null, array['adm@x', 'gestor@x'], 'Assunto 9', 'Corpo 9');
+  perform t.afirma('com Brevo o envio sai na hora (status "enviando")',
+    (select status || '/' || canal from public.fila_email where chave = 't9:com-brevo') = 'enviando/brevo');
+  select * into v_log from net.http_log order by id desc limit 1;
+  perform t.afirma('requisição vai à API do Brevo com a chave no cabeçalho',
+    v_log.url = 'https://api.brevo.com/v3/smtp/email' and v_log.headers->>'api-key' = v_k, v_log.url);
+  perform t.afirma('destinatários reais seguem em cópia oculta; remetente configurado',
+    v_log.body->'bcc' @> '[{"email":"adm@x"},{"email":"gestor@x"}]'::jsonb and v_log.body->'sender'->>'email' = 'avisos@instituicao.org'
+    and v_log.body->>'subject' = 'Assunto 9', v_log.body::text);
+  perform public._conciliar_envios();
+  perform t.afirma('resposta 2xx do Brevo marca como enviado',
+    (select status from public.fila_email where chave = 't9:com-brevo') = 'enviado');
+
+  perform public.admin_configurar_brevo('chave-ruim-chave-ruim-000000', 'avisos@instituicao.org');
+  perform public._enfileirar_email('t9:chave-ruim', 'TESTE', null, array['adm@x'], 'Falha', 'x');
+  perform public._conciliar_envios();
+  perform t.afirma('resposta de erro do Brevo vira "erro" com motivo (o SMTP tenta de novo)',
+    (select status || '|' || coalesce(erro, '') from public.fila_email where chave = 't9:chave-ruim') like 'erro|Brevo 401%');
+  perform public.admin_configurar_brevo(v_k, 'avisos@instituicao.org');
+
+  update public.fila_email set status = 'enviando', net_id = 999999, enviando_desde = now() - interval '11 minutes' where chave = 't9:chave-ruim';
+  perform public._conciliar_envios();
+  perform t.afirma('sem resposta em 10 minutos o item volta à fila do SMTP',
+    (select status from public.fila_email where chave = 't9:chave-ruim') = 'pendente');
+
+  -- o registro na Portaria avisa o ADM imediatamente
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício de teste imediato','1111')::text$q$);
+  perform t.afirma('registro cria o protocolo', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('aviso de chegada ao ADM sai na hora',
+    (select status from public.fila_email where evento = 'CHEGADA' order by id desc limit 1) = 'enviando');
+  select * into v_log from net.http_log order by id desc limit 1;
+  perform t.afirma('o e-mail não traz a descrição do documento (LGPD) nem tempo máximo',
+    v_log.body->>'textContent' not like '%Ofício de teste imediato%' and v_log.body->>'textContent' not like '%Limite para%'
+    and v_log.body->'bcc' @> '[{"email":"adm@x"}]'::jsonb, v_log.body->>'textContent');
+
+  -- segurança e painel
+  perform t.afirma('o navegador não lê a chave do Brevo',
+    t.como('gestor@x', 'select count(*)::text from public.email_brevo') like 'ERRO:%');
+  perform t.afirma('o navegador não chama a configuração do Brevo',
+    t.como('gestor@x', $q$select public.admin_configurar_brevo('x','y')$q$) like 'ERRO:%');
+  perform t.afirma('backup não leva a chave do Brevo', t.como('gestor@x', 'select public.exportar_backup()::text') not like '%' || v_k || '%');
+  r := t.como('adm@x', 'select public.painel_email_teste()::text');
+  perform t.afirma('só o gestor envia e-mail de teste', r like 'ERRO:%gestor%', r);
+  r := t.como('gestor@x', 'select public.painel_email_teste()::text');
+  perform t.afirma('e-mail de teste sai na hora ao próprio gestor',
+    (r::jsonb->>'ok') = 'true' and (r::jsonb->>'imediato') = 'true' and (r::jsonb->>'destino') = 'gestor@x', r);
+  perform t.afirma('painel informa que o Brevo está configurado',
+    (t.como('gestor@x', 'select public.painel_resumo()->>''brevo_configurado''')) = 'true');
+  perform public.admin_desativar_brevo();
+  perform public._enfileirar_email('t9:desativado', 'TESTE', null, array['adm@x'], 'Desativado', 'x');
+  perform t.afirma('com o Brevo desativado o item fica pendente',
+    (select status from public.fila_email where chave = 't9:desativado') = 'pendente');
+  perform t.afirma('cadeia da trilha segue íntegra no fim', t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='

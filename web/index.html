@@ -117,7 +117,6 @@
         <button type="button" class="kpi k-setor" data-status="pendente_setor"><span class="kpi-ico" data-ico="usuario"></span><span class="kpi-rot">Aguardando setor de destino</span><strong id="k-setor">–</strong><small>aguardando 3º recebimento</small></button>
         <button type="button" class="kpi k-ok" data-status="concluido"><span class="kpi-ico" data-ico="ok"></span><span class="kpi-rot">Concluído / Entregue</span><strong id="k-ok">–</strong><small>fluxo completo</small></button>
         <button type="button" class="kpi k-venc" data-alerta="vencidos"><span class="kpi-ico" data-ico="alerta"></span><span class="kpi-rot">Prazo vencido</span><strong id="k-venc">–</strong><small id="k-crit">&nbsp;</small></button>
-        <button type="button" class="kpi k-sla" data-alerta="sla"><span class="kpi-ico" data-ico="cronometro"></span><span class="kpi-rot">Parados além do tempo</span><strong id="k-sla">–</strong><small>sem recebimento no tempo máximo</small></button>
       </div>
 
       <form class="filtros" id="form-filtros" role="search">
@@ -138,7 +137,6 @@
             <option value="abertos">Em andamento</option>
             <option value="vencidos">Prazo vencido</option>
             <option value="criticos">Vence em até 2 dias</option>
-            <option value="sla">Parados além do tempo máximo</option>
             <option value="meus">Meus pendentes</option>
             <option value="urgentes">Urgentes em andamento</option>
             <option value="semana">Vencem em até 7 dias</option>
@@ -290,7 +288,7 @@
         </section>
         <section class="sis-sec" id="sis-parametros" aria-labelledby="sis-parametros-t">
           <h2 data-ico="cronometro" id="sis-parametros-t" tabindex="-1">Prazos e regras</h2>
-        <p class="dica">Valores usados em todo o sistema. Prazos e tempos máximos contam apenas dias e horas úteis (cadastre os feriados).</p>
+        <p class="dica">Valores usados em todo o sistema. Os prazos dos documentos contam apenas dias úteis (cadastre os feriados). Os avisos de chegada e de encaminhamento saem na hora, sem prazo de espera.</p>
         <form id="form-param" class="param-form" autocomplete="off" novalidate>
           <div id="param-corpo"></div>
           <div class="param-barra">
@@ -305,6 +303,7 @@
           <h2 data-ico="grafico" id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
         <div class="kpis" id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
+        <div class="barra"><button type="button" class="btn sec" id="btn-email-teste" data-ico="email">Enviar e-mail de teste</button><span class="dica" id="email-teste-msg" role="status"></span></div>
         </section>
       </div>
       <div id="sub-cadastros" class="sub" hidden>
@@ -400,8 +399,8 @@
         <button data-ico="galeria" type="button" class="btn sec" id="btn-foto-arquivo">Escolher da galeria</button>
         <button data-ico="lixeira" type="button" class="btn sec mini" id="btn-foto-remover" hidden>Remover foto</button>
       </div>
-      <input type="file" id="inp-foto-camera" accept="image/*" capture="environment" hidden>
-      <input type="file" name="foto" id="inp-foto" accept="image/*" hidden>
+      <input type="file" id="inp-foto-camera" class="so-leitor" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+      <input type="file" name="foto" id="inp-foto" class="so-leitor" accept="image/*" tabindex="-1" aria-hidden="true">
       <img id="foto-previa" alt="Prévia da foto" hidden>
       <small class="dica">Fotografe a capa ou o envelope no ato da chegada. Não fotografe o conteúdo do documento.</small>
     </fieldset>
@@ -480,6 +479,7 @@
     <p class="erro" id="cam-erro" role="alert" hidden></p>
     <div class="modal-acoes">
       <button type="button" class="btn sec" data-fechar data-ico="fechar">Cancelar</button>
+      <button type="button" class="btn sec" id="btn-cam-trocar" data-ico="gerar">Trocar câmera</button>
       <button data-ico="camera" type="button" class="btn primario" id="btn-capturar">Capturar</button>
     </div>
   </div>

@@ -27,20 +27,17 @@
       SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra alterada', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
-      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido',
+      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado',
     };
 
     // ---------- parâmetros: rótulos, formatos de hora e de duração (espelham as regras do banco)
     const ROTULO_PARAM = {
       prazo_judicial_dias: 'Prazo das demandas judiciais', prazo_correspondencia_dias: 'Prazo das correspondências',
-      sla_adm_min: 'Tempo máximo do ADM', sla_adm_urgente_min: 'Tempo máximo do ADM (urgente)',
-      sla_setor_min: 'Tempo máximo do setor', sla_setor_urgente_min: 'Tempo máximo do setor (urgente)',
-      sla_lembrete_min: '2º aviso ao responsável após', sla_escalada_min: 'Aviso ao gestor após',
       expediente_inicio: 'Início do expediente', expediente_fim: 'Fim do expediente', alerta_prazo_dias: 'Avisar com antecedência (dias)',
       foto_obrigatoria_judicial: 'Foto obrigatória nas demandas judiciais', gestor_ignora_segregacao: 'Gestor assina mais de uma etapa',
       url_sistema: 'Endereço do sistema', sessao_inatividade_min: 'Encerrar sessão por inatividade após', mfa_gestor_obrigatorio: 'Verificação em duas etapas obrigatória para o gestor',
     };
-    const ehDur = (k) => /^(sla_.*|sessao_inatividade)_min$/.test(k);
+    const ehDur = (k) => /^sessao_inatividade_min$/.test(k);
     // "H:MM" (como o banco guarda) → minutos
     const minDeHM = (v) => { const m = /^(\d{1,3}):(\d{2})$/.exec(String(v)); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
     // minutos → "4h30", "2h", "45min"
@@ -402,18 +399,6 @@
           <section class="cartao-cfg"><h3>Segurança da sessão</h3>
             <p class="dica">Sem usar o sistema por este tempo, o usuário é desconectado. Aceita 6h, 6:00, 90min ou 1,5 (horas); de 5 min a 24 h.</p>
             <div class="param-linhas"><label>Encerrar após ${campoDur('sessao_inatividade_min', 1440)}</label></div></section>
-          <section class="cartao-cfg larga"><h3>Tempo máximo para receber (horas úteis)</h3>
-            <p class="dica">Aceita 4h30, 4:30, 90min, 1,5 (horas) ou 1d (uma jornada de expediente). Ao estourar, o sistema envia aviso.</p>
-            <table class="param-tab"><thead><tr><th>Etapa</th><th>Normal</th><th>Urgente</th></tr></thead><tbody>
-              <tr><th scope="row">ADM recebe o documento</th><td>${campoDur('sla_adm_min')}</td><td>${campoDur('sla_adm_urgente_min')}</td></tr>
-              <tr><th scope="row">Setor de destino recebe</th><td>${campoDur('sla_setor_min')}</td><td>${campoDur('sla_setor_urgente_min')}</td></tr>
-            </tbody></table></section>
-          <section class="cartao-cfg larga"><h3>Lembretes quando o tempo máximo é ultrapassado</h3>
-            <p class="dica">Ao estourar o tempo máximo, o responsável recebe o 1º aviso. Os prazos abaixo contam a partir desse momento, em horas úteis. Quando o protocolo muda de setor, a contagem recomeça.</p>
-            <div class="param-linhas two">
-              <label>2º aviso ao responsável, após ${campoDur('sla_lembrete_min')}</label>
-              <label>Aviso também ao gestor, após ${campoDur('sla_escalada_min')}</label>
-            </div></section>
           <section class="cartao-cfg larga"><h3>Regras gerais</h3>
             <div class="param-linhas">
               <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> <span class="chk-txt">Exigir foto do envelope nas demandas judiciais</span></label>
@@ -454,11 +439,6 @@
         if (!ok) { invalido = true; prev.textContent = el.value.trim() ? `Formato inválido (de 5 min a ${max >= 1440 ? '24 h' : '240 h'})` : 'Informe o tempo'; prev.className = 'dur-previa ruim'; }
         else { prev.textContent = `= ${fmtDur(m)} · ${m} min${m >= jornada && el.name !== 'sessao_inatividade_min' ? ` · ${(m / jornada).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${m / jornada === 1 ? 'dia útil' : 'dias úteis'}` : ''}`; prev.className = 'dur-previa'; }
       });
-      const lem = lerDuracao(f.elements.sla_lembrete_min.value, jornada), esc2 = lerDuracao(f.elements.sla_escalada_min.value, jornada);
-      if (lem != null && esc2 != null && esc2 < lem) {
-        invalido = true; f.elements.sla_escalada_min.classList.add('invalido');
-        const pv = $('#p-sla_escalada_min'); pv.textContent = 'O aviso ao gestor não pode vir antes do 2º aviso'; pv.className = 'dur-previa ruim';
-      }
       const i = hmEmMin(f.elements.expediente_inicio.value), fim = hmEmMin(f.elements.expediente_fim.value), av = $('#p-exped');
       const exped = !(i < fim); av.hidden = !exped; av.textContent = exped ? 'O fim do expediente deve ser depois do início.' : ''; if (exped) invalido = true;
       const mudou = Object.entries(valoresForm()).some(([k, v]) => paramMudou(k, v));
@@ -515,7 +495,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 8${v < 8 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 9${v < 9 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -524,11 +504,14 @@
         const k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
         $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
           + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')
+          + k('Envio imediato (Brevo)', r.brevo_configurado ? 'Ativo' : 'Inativo', r.brevo_configurado ? 'avisos saem na hora' : 'veja o guia do Brevo')
           + k('E-mails na fila', r.email_pendente, 'aguardando envio') + k('E-mails com erro', r.email_erro, r.ultimo_erro_email || 'nenhum erro')
           + k('E-mails enviados', r.email_enviado, 'total entregue');
-        $('#sistema-aviso').textContent = r.integracao_configurada
-          ? 'Integração de e-mail configurada. Se a fila crescer sem enviar, confira o fluxo “Avisos por e-mail” na aba Actions do GitHub.'
-          : 'Integração de e-mail ainda não configurada: os avisos ficam só no sistema (sino). Veja a seção 4B do README.';
+        $('#sistema-aviso').textContent = r.brevo_configurado
+          ? 'Envio imediato pelo Brevo ativo: o ADM e os setores recebem o e-mail no instante do registro ou do encaminhamento. Use o botão abaixo para conferir.'
+          : r.integracao_configurada
+            ? 'Sem envio imediato: os e-mails saem pela rotina do GitHub Actions (a cada ~15 min). Para enviar na hora, configure o Brevo (GUIA_BREVO.md).'
+            : 'E-mail ainda não configurado: os avisos ficam só no sistema (sino). Siga o GUIA_BREVO.md para ativar o envio imediato.';
       } catch (e) { falha(e); }
     }
 
@@ -549,6 +532,14 @@
       $('#tbody-audit').addEventListener('click', (ev) => { const b = ev.target.closest('[data-prot]'); if (b) LP.abrirDetalhe(b.dataset.prot); });
 
       // dados, backup e retenção
+      $('#btn-email-teste').addEventListener('click', async () => {
+        const btn = $('#btn-email-teste'), msg = $('#email-teste-msg'); btn.disabled = true; msg.textContent = 'Enviando…';
+        try {
+          const r = await rpc('painel_email_teste');
+          msg.textContent = r.imediato ? `E-mail enviado para ${r.destino}. Confira a caixa de entrada (e o spam).` : `E-mail de teste na fila para ${r.destino}: sem o Brevo ativo, ele sai na próxima rodada do GitHub Actions.`;
+          toast('E-mail de teste solicitado.'); carregarSistema();
+        } catch (e) { msg.textContent = ''; toast(e.message, true); } finally { btn.disabled = false; }
+      });
       $('#btn-backup').addEventListener('click', async () => {
         const btn = $('#btn-backup'); btn.disabled = true;
         try {

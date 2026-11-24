@@ -668,3 +668,16 @@ h2 > .ico, h3 > .ico { width: 1.05em; height: 1.05em; margin-right: .5rem; color
 #form-feriado { align-items: flex-end; }
 #form-feriado .btn { box-sizing: border-box; height: var(--altura-campo, 2.75rem); }
 #form-feriado input { box-sizing: border-box; height: 2.75rem; }
+
+/* TEXTO LONGO SEM ESPAÇOS (ex.: "AAAA…"): quebra dentro do próprio quadro e não alarga a tela */
+.so-leitor { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.modal-corpo, .det-sec, .det-topo > div, .resumo-doc, .linha-tempo li, .hist li, .et-corpo, .et-meta > div, .det-grade > div { min-width: 0; }
+.det-sec, .linha-tempo { grid-template-columns: minmax(0, 1fr); }
+dialog.gaveta { overflow-x: hidden; }
+.resumo-doc, .resumo-doc span, .resumo-doc .original, .det-grade dd, .et-meta dd, .hist li, .hist-just, .aviso-devolvido,
+td.desc, td.detalhes, .lista-sino li, #lista-sino li, .modal-corpo p, .modal-corpo li, .det-topo h2 { overflow-wrap: anywhere; word-break: normal; }
+td.desc { max-width: 32rem; }
+td.desc .tag { white-space: nowrap; }
+table td.d, table td.detalhes { overflow-wrap: anywhere; }
+.cam-video { aspect-ratio: 4 / 3; }
+@media (max-width: 520px) { #dlg-camera .modal-acoes { flex-wrap: wrap; } #dlg-camera .modal-acoes .btn { flex: 1 1 auto; justify-content: center; } }

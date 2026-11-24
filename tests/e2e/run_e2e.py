@@ -176,7 +176,7 @@ try:
         page.screenshot(path=str(OUT / "5_dashboard_gestor.png"))
         cards = [page.inner_text(s) for s in ("#k-total", "#k-adm", "#k-setor", "#k-ok")]; print("KPIs:", cards)
         assert cards == ["2", "1", "0", "1"], cards
-        assert page.inner_text("#k-venc") == "0" and page.inner_text("#k-sla") == "0"
+        assert page.inner_text("#k-venc") == "0"
         page.select_option("select[name=ordem]", "prazo"); page.wait_for_timeout(500)
         assert page.locator("#tbody tr[data-id]").count() == 2
         page.select_option("select[name=ordem]", "recentes")
@@ -270,7 +270,7 @@ try:
         page.click("[data-sub=cadastros]"); page.click("#set-novo"); page.fill("#form-setor input[name=nome]", "Superintendência Teste")
         page.click("#form-setor button[type=submit]"); esperar_toast(page, "Setor salvo"); page.wait_for_timeout(400)
         assert "Superintendência Teste" in page.inner_text("#tbody-set")
-        page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
+        page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sessao_inatividade_min]").wait_for()
         page.click("[data-sub=cadastros]"); page.fill("#form-feriado input[name=data]", "2027-02-09"); page.fill("#form-feriado input[name=descricao]", "Carnaval")
         page.click("#form-feriado button[type=submit]"); esperar_toast(page, "Feriado cadastrado"); page.wait_for_timeout(400)
         assert "Carnaval" in page.inner_text("#tbody-fer"); page.click("#tbody-fer button"); page.wait_for_timeout(500)
@@ -354,21 +354,20 @@ try:
         assert psql("select count(*) from public.protocolos where numero='2026-0001'") == "0"
 
         # Prazos e regras: formatos de hora, um único botão Salvar
-        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sla_adm_min]").wait_for()
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#form-param input[name=sessao_inatividade_min]").wait_for()
         assert page.locator("#form-param button[type=submit]").count() == 1 and page.locator("#form-param button:has-text('Salvar')").count() == 1
-        expect(page.locator("#param-corpo input[name=sla_adm_min]")).to_have_value("4h", timeout=6000)
+        expect(page.locator("#param-corpo input[name=sessao_inatividade_min]")).to_have_value("6h", timeout=6000)
         assert page.locator("#param-salvar").is_disabled(), page.inner_text("#param-estado")
         page.screenshot(path=str(OUT / "14_parametros.png"), full_page=True)
-        page.fill("#form-param input[name=sla_adm_min]", "xx"); assert page.locator("#param-salvar").is_disabled() and "inválido" in page.inner_text("#p-sla_adm_min")
-        page.fill("#form-param input[name=sla_adm_min]", "1h30"); assert "90 min" in page.inner_text("#p-sla_adm_min") and page.locator("#param-salvar").is_enabled()
-        page.fill("#form-param input[name=sla_setor_min]", "1d"); assert "9h" in page.inner_text("#p-sla_setor_min")
+        page.fill("#form-param input[name=sessao_inatividade_min]", "xx"); assert page.locator("#param-salvar").is_disabled() and "inválido" in page.inner_text("#p-sessao_inatividade_min")
+        page.fill("#form-param input[name=sessao_inatividade_min]", "1h30"); assert "90 min" in page.inner_text("#p-sessao_inatividade_min") and page.locator("#param-salvar").is_enabled()
         page.fill("#form-param input[name=expediente_inicio]", "07:30"); page.fill("#form-param input[name=prazo_judicial_dias]", "6")
         page.click("#param-salvar"); esperar_toast(page, "Alterações salvas"); page.wait_for_timeout(500)
-        assert page.input_value("#form-param input[name=sla_adm_min]") == "1h30" and page.input_value("#form-param input[name=expediente_inicio]") == "07:30"
-        assert psql("select valor from public.parametros where chave='sla_adm_min'") == "1:30"
+        assert page.input_value("#form-param input[name=sessao_inatividade_min]") == "1h30" and page.input_value("#form-param input[name=expediente_inicio]") == "07:30"
+        assert psql("select valor from public.parametros where chave='sessao_inatividade_min'") == "1:30"
         page.fill("#form-param input[name=expediente_fim]", "07:00"); assert page.locator("#p-exped").is_visible() and page.locator("#param-salvar").is_disabled()
         page.click("#param-descartar"); page.wait_for_timeout(500); assert page.input_value("#form-param input[name=expediente_fim]") == "17:00"
-        page.fill("#form-param input[name=sla_adm_min]", "4h"); page.fill("#form-param input[name=sla_setor_min]", "9h"); page.fill("#form-param input[name=expediente_inicio]", "08:00")
+        page.fill("#form-param input[name=sessao_inatividade_min]", "6h"); page.fill("#form-param input[name=expediente_inicio]", "08:00")
         page.fill("#form-param input[name=prazo_judicial_dias]", "5"); page.click("#param-salvar"); esperar_toast(page, "Alterações salvas")
         page.wait_for_timeout(800)          # o formulário é recarregado após salvar
         # tempo de inatividade ajustável (padrão 6 h)
@@ -424,13 +423,23 @@ try:
         sair(page)
 
         # celular: "Tirar foto" abre a câmera do aparelho
-        cel = b.new_context(viewport={"width": 390, "height": 800}, is_mobile=True, has_touch=True)
+        cel = b.new_context(viewport={"width": 390, "height": 800}, is_mobile=True, has_touch=True, permissions=["camera"])
         pc = cel.new_page(); pc.on("pageerror", lambda e: problemas.append(f"pageerror(cel): {e}"))
         login(pc, "gestor"); pc.click("#btn-novo")
+        # nova captura: a câmera abre dentro do sistema (não troca de aplicativo, evita o erro de Android)
+        pc.click("#btn-foto-camera"); pc.locator("#dlg-camera[open]").wait_for(); expect(pc.locator("#btn-capturar")).to_be_enabled(timeout=8000)
+        assert pc.locator("#btn-cam-trocar").is_visible()
+        pc.screenshot(path=str(OUT / "15a_celular_camera.png"))
+        pc.click("#btn-capturar"); pc.locator("#foto-previa").wait_for(state="visible", timeout=8000)
+        assert pc.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+        pc.screenshot(path=str(OUT / "15_celular_foto.png"))
+        # plano B: sem câmera no navegador, abre a câmera do aparelho (campo de arquivo)
+        pc.click("#btn-foto-remover")
+        pc.evaluate("Object.defineProperty(navigator, 'mediaDevices', { value: undefined, configurable: true })")
         with pc.expect_file_chooser() as fc: pc.click("#btn-foto-camera")
         fc.value.set_files(str(FOTO)); pc.locator("#foto-previa").wait_for(state="visible", timeout=8000)
         assert pc.get_attribute("#inp-foto-camera", "capture") == "environment"
-        pc.screenshot(path=str(OUT / "15_celular_foto.png")); cel.close()
+        cel.close()
         login(page, "gestor")
 
         # ---- rascunho automático do novo protocolo
@@ -463,12 +472,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "8 de 8" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "9 de 9" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 8
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 9
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -589,7 +598,7 @@ try:
         psql("insert into public.protocolos (numero, descricao, status, created_by, tipo, urgente) select '2026-9001','Ofício de teste da devolução','pendente_adm', id, 'correspondencia', false from auth.users where email='portaria@teste.local'")
         psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9001'),'2026-9001',1,(select user_id from public.perfis where email='portaria@teste.local'),'Maria (Portaria)',null,null,null,now())")
         psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9001'),'2026-9001',2,(select user_id from public.perfis where email='adm@teste.local'),'João (Administração)',null,null,null,now())")
-        psql("update public.protocolos set setor_destino_id=(select id from public.setores where nome='Jurídico'), sla_limite=now()+interval '2 days' where numero='2026-9001'")
+        psql("update public.protocolos set setor_destino_id=(select id from public.setores where nome='Jurídico') where numero='2026-9001'")
         login(page, "juridico"); page.locator("#tbody tr:has-text('2026-9001')").wait_for()
         assert page.locator("#atalho-meus").is_visible()
         page.click("#atalhos [data-alerta=meus]"); page.wait_for_timeout(500); assert page.locator("#tbody tr:has-text('2026-9001')").count() == 1
@@ -644,6 +653,28 @@ try:
         page.set_viewport_size({"width": 390, "height": 800}); page.click("[data-aba=protocolos]"); page.wait_for_timeout(300)
         page.screenshot(path=str(OUT / "7_mobile.png"))
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "scroll horizontal no mobile"
+        # descrição longa sem espaços não pode alterar o layout (lista, gaveta de detalhes)
+        psql("insert into public.protocolos (numero, descricao, status, created_by, tipo, urgente) select '2026-9002', repeat('A', 240), 'pendente_adm', id, 'correspondencia', false from auth.users where email='portaria@teste.local'")
+        psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9002'),'2026-9002',1,(select user_id from public.perfis where email='portaria@teste.local'),'Maria (Portaria)',null,null,null,now())")
+        page.click("[data-aba=protocolos]"); page.reload(); page.locator("#tbody tr:has-text('2026-9002')").wait_for()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "descrição longa alargou a página (lista)"
+        page.locator("#tbody tr:has-text('2026-9002')").click(); page.locator("#dlg-detalhe[open]").wait_for(); page.wait_for_timeout(500)
+        assert page.evaluate("(() => { const d = document.querySelector('#dlg-detalhe'); return d.scrollWidth <= d.clientWidth + 1; })()"), "descrição longa alargou a gaveta"
+        assert page.evaluate("(() => { const r = document.querySelector('#dlg-detalhe .resumo-doc').getBoundingClientRect(); return r.right <= window.innerWidth; })()")
+        page.screenshot(path=str(OUT / "16_descricao_longa_mobile.png")); page.keyboard.press("Escape")
+        page.set_viewport_size({"width": 1366, "height": 820}); page.wait_for_timeout(300)
+        page.locator("#tbody tr:has-text('2026-9002')").click(); page.locator("#dlg-detalhe[open]").wait_for(); page.wait_for_timeout(400)
+        assert page.evaluate("(() => { const d = document.querySelector('#dlg-detalhe'); return d.scrollWidth <= d.clientWidth + 1; })()")
+        page.screenshot(path=str(OUT / "16b_descricao_longa_desktop.png")); page.keyboard.press("Escape")
+        # e-mail de teste: sem Brevo vai para a fila; com Brevo sai na hora
+        page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#btn-email-teste").wait_for()
+        page.click("#btn-email-teste"); expect(page.locator("#email-teste-msg")).to_contain_text("fila", timeout=8000)
+        psql("select public.admin_configurar_brevo('chave-e2e-chave-e2e-chave-1234','avisos@teste.local','Livro CECAN')")
+        page.reload(); page.click("#btn-aba-painel"); page.click("[data-sub=sistema]"); page.locator("#btn-email-teste").wait_for(); page.wait_for_timeout(700)
+        assert "Ativo" in page.inner_text("#sistema-kpis"), page.inner_text("#sistema-kpis")
+        page.click("#btn-email-teste"); expect(page.locator("#email-teste-msg")).to_contain_text("enviado para", timeout=8000)
+        assert int(psql("select count(*) from net.http_log where url like 'https://api.brevo.com/%'")) >= 1
+        page.screenshot(path=str(OUT / "17_email_teste.png"))
         b.close()
     print("\nE2E OK")
 finally:

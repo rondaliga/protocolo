@@ -56,6 +56,7 @@
     sliders: 'M4 6h10 M18 6h2 M4 12h4 M12 12h8 M4 18h12 M20 18h0 M16 4v4 M10 10v4 M18 16v4',
     grafico: 'M4 20V4 M4 20h16 M8 16v-5 M13 16V8 M18 16v-3',
     pessoas: 'M16 21a6 6 0 0 0-12 0 M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21a5 5 0 0 0-4-4.9 M16 4.2a4 4 0 0 1 0 7.6',
+    email: 'M3 5h18v14H3z M3 7l9 6 9-6',
     verificar: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z M9 12l2 2 4-4',
   };
   const svg = (n) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${D[n] || ''}"/></svg>`;
