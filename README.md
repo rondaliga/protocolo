@@ -253,7 +253,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
 
 **Instalação e manutenção**
-- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 10 de 10") e é idempotente.
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 11 de 11") e é idempotente.
 - `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
 
 **Inatividade**
@@ -324,6 +324,13 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 - **Avisos no celular (Web Push, gratuito):** `sw.js` + `avisos.js` + Edge Function `supabase/functions/enviar-push`. Cada usuário ativa em *Minha conta → Avisos neste aparelho*. O aviso leva só o número do protocolo. Ao sair do sistema, o aparelho deixa de receber os avisos daquele usuário. Passo a passo: `GUIA_AVISOS_NO_CELULAR.md`.
 - **Roteiro de conferência no Supabase real:** `ROTEIRO_VALIDACAO.md`. **E-mail com domínio próprio (sem custo):** `GUIA_DOMINIO_EMAIL.md`.
 - WhatsApp e SMS ficaram de fora por não serem gratuitos.
+
+## 4J. E-mail de boas-vindas ao criar usuário (migração 11)
+
+- Ao cadastrar um usuário (Painel → Usuários → Novo usuário), o sistema envia **na hora** um e-mail formal ao novo usuário com: endereço do sistema, e-mail de acesso, **senha e PIN provisórios**, perfil e setor, o passo a passo do primeiro acesso, orientações de segurança (acesso pessoal, troca obrigatória, bloqueio do PIN, encerramento por inatividade, trilha de auditoria/LGPD) e a assinatura do gestor.
+- A função `painel_enviar_acesso` só aceita a senha e o PIN que **realmente são os provisórios** do usuário e só vale enquanto o primeiro acesso não foi concluído.
+- **Segurança:** assim que o e-mail é enviado, o texto (que contém as credenciais) é **apagado da fila no banco**; itens que não saírem em 7 dias também perdem o texto. A trilha registra `ACESSO_ENVIADO_POR_EMAIL` sem as credenciais. A tela "Entregue os dados de acesso" continua aparecendo ao gestor como segunda via.
+- Sem o Brevo ativo, o e-mail entra na fila e sai pela rotina do GitHub Actions.
 
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 

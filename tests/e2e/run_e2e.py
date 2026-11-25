@@ -24,6 +24,10 @@ srv = subprocess.Popen([sys.executable, str(AQUI / "mock_supabase.py"), str(PORT
 time.sleep(1.5)
 
 
+def psql(q):
+    return subprocess.run(["psql", "-d", "protocolo_e2e", "-tA", "-c", q], capture_output=True, text=True).stdout.strip()
+
+
 def login(page, usuario, senha=SENHA, email=None):
     page.goto(URL)
     page.locator("#form-login").wait_for(state="visible")
@@ -262,6 +266,9 @@ try:
         page.fill("#form-usuario input[name=pin]", "5556"); page.click("#form-usuario button[type=submit]")
         page.locator("#dlg-credencial[open]").wait_for(); cred = page.inner_text("#cred-dados")
         assert senha_prov in cred and pin_prov in cred and "novo.adm@teste.local" in cred, cred
+        expect(page.locator("#cred-email-msg")).to_contain_text("novo.adm@teste.local", timeout=8000)
+        corpo_bv = psql("select corpo from public.fila_email where evento='BOAS_VINDAS' and destinatarios=array['novo.adm@teste.local'] order by id desc limit 1")
+        assert senha_prov in corpo_bv and pin_prov in corpo_bv and "Prezado(a)" in corpo_bv and "COMO FAZER O PRIMEIRO ACESSO" in corpo_bv, corpo_bv
         page.screenshot(path=str(OUT / "8b_credenciais.png")); page.click("#dlg-credencial [data-fechar]"); page.wait_for_timeout(300)
         assert page.locator("#tbody-usr tr").count() == 6
         assert "Primeiro acesso pendente" in page.inner_text("#tbody-usr tr:has-text('Rita Nova')")
@@ -472,12 +479,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "10 de 10" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "11 de 11" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 10
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 11
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")

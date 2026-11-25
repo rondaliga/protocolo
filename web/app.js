@@ -1203,6 +1203,7 @@
       recarregarSessao: carregarSessaoConfig,
       $, $$, esc, data, hora, rpc, toast, erroForm, enviar, abrirDetalhe, imprimir, cabecalhoImpressao, rodapeImpressao,
       estado: () => estado, aplicarLogo, limparSetores: () => { estado.setores = null; },
+      unidade: () => CFG.UNIDADE,
       enderecoSistema: () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`),
     }));
     avisosMod = window.criarAvisos({ $, rpc, toast }); avisosMod.ligar();

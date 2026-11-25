@@ -361,7 +361,7 @@ end $$;
 
 -- ================================================================= v3: gestor com acesso total, painel, trilha, assinatura digitada
 do $$
-declare r text; j jsonb; v_id bigint; v_id2 bigint; v_u uuid; v_u2 uuid; v_h text;
+declare r text; j jsonb; v_id bigint; v_id2 bigint; v_u uuid; v_u2 uuid; v_h text; v_fila public.fila_email%rowtype;
         v_png text := 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
         v_jur bigint := (select id from public.setores where nome='Jurídico');
         v_far bigint := (select id from public.setores where nome='Farmácia');
@@ -433,6 +433,29 @@ begin
   perform t.afirma('identidade de e-mail criada', exists (select 1 from auth.identities where user_id = v_u and provider = 'email'));
   perform t.afirma('usuário nasce com troca de senha e PIN pendentes',
     (select deve_trocar_senha and deve_trocar_pin and ativo and email = 'novo@x.com' from public.perfis where user_id = v_u));
+  -- e-mail formal com os dados de acesso
+  r := t.como('gestor@x', format($q$select public.painel_enviar_acesso(%L,'Senha-Errada-999','2468','https://exemplo.org/livro/','CECAN – LNRCC')::text$q$, v_u));
+  perform t.afirma('e-mail de acesso recusa senha que não é a provisória', r like 'ERRO:%senha%', r);
+  r := t.como('gestor@x', format($q$select public.painel_enviar_acesso(%L,'Senha-Forte-123','9999','https://exemplo.org/livro/','CECAN – LNRCC')::text$q$, v_u));
+  perform t.afirma('e-mail de acesso recusa PIN que não é o provisório', r like 'ERRO:%PIN%', r);
+  r := t.como('adm@x', format($q$select public.painel_enviar_acesso(%L,'Senha-Forte-123','2468','https://exemplo.org/livro/')::text$q$, v_u));
+  perform t.afirma('só o gestor envia os dados de acesso', r like 'ERRO:%', r);
+  r := t.como('gestor@x', format($q$select public.painel_enviar_acesso(%L,'Senha-Forte-123','2468','https://exemplo.org/livro/','CECAN – LNRCC')::text$q$, v_u));
+  perform t.afirma('gestor envia os dados de acesso', r not like 'ERRO:%' and (r::jsonb->>'ok') = 'true' and (r::jsonb->>'email') = 'novo@x.com', r);
+  select * into v_fila from public.fila_email where evento = 'BOAS_VINDAS' order by id desc limit 1;
+  perform t.afirma('e-mail formal vai só ao novo usuário, com assunto padrão',
+    v_fila.destinatarios = array['novo@x.com'] and v_fila.assunto = '[Livro de Protocolo] Dados de acesso ao sistema', v_fila.assunto);
+  perform t.afirma('e-mail traz endereço, usuário, senha e PIN provisórios',
+    v_fila.corpo like '%https://exemplo.org/livro/%' and v_fila.corpo like '%novo@x.com%' and v_fila.corpo like '%Senha-Forte-123%' and v_fila.corpo like '%2468%', v_fila.corpo);
+  perform t.afirma('e-mail traz saudação formal, primeiro acesso, segurança, LGPD e assinatura',
+    v_fila.corpo like 'Prezado(a) Novo Usuário,%' and v_fila.corpo like '%COMO FAZER O PRIMEIRO ACESSO%' and v_fila.corpo like '%ORIENTAÇÕES DE SEGURANÇA%'
+    and v_fila.corpo like '%LGPD%' and v_fila.corpo like '%Atenciosamente,%' and v_fila.corpo like '%ADM (Administração)%', v_fila.corpo);
+  perform t.afirma('envio dos dados de acesso fica na trilha sem as credenciais',
+    exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL')
+    and not exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL' and detalhes::text like '%Senha-Forte-123%'));
+  update public.fila_email set status = 'enviado', enviado_em = now() where id = v_fila.id;
+  perform t.afirma('depois de enviado, o texto com credenciais é apagado do banco',
+    (select corpo from public.fila_email where id = v_fila.id) like '[Conteúdo removido%' and (select corpo from public.fila_email where id = v_fila.id) not like '%Senha-Forte-123%');
   r := t.como('gestor@x', $q$select public.painel_criar_usuario('NOVO@x.com','Outro','adm',null,'Senha-Forte-123','2468','5555')::text$q$);
   perform t.afirma('e-mail duplicado (sem diferenciar maiúsculas) é recusado', r like 'ERRO:%Já existe%', r);
   -- vincula conta já existente no Auth (criada pelo painel do Supabase)
@@ -676,7 +699,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 10 arquivos', (select count(*) from public.schema_versao) = 10 and public.versao_schema() = 10);
+  perform t.afirma('schema_versao registra os 11 arquivos', (select count(*) from public.schema_versao) = 11 and public.versao_schema() = 11);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -692,7 +715,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '10', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '11', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');

@@ -27,7 +27,7 @@
       SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra alterada', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
-      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', RELATORIO_GERADO: 'Relatório gerado',
+      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', ACESSO_ENVIADO_POR_EMAIL: 'Dados de acesso enviados por e-mail', RELATORIO_GERADO: 'Relatório gerado',
     };
 
     // ---------- parâmetros: rótulos, formatos de hora e de duração (espelham as regras do banco)
@@ -496,7 +496,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 10${v < 10 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 11${v < 11 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -748,6 +748,12 @@
           linhas.push(['PIN provisório', pin]);
           mostrarCredenciais(linhas);
           toast(`Usuário ${nome} criado.`);
+          // e-mail formal com os dados de acesso (o texto é apagado do banco depois do envio)
+          const msg = $('#cred-email-msg'); msg.textContent = 'Enviando os dados de acesso por e-mail…'; msg.hidden = false;
+          try {
+            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade() });
+            msg.textContent = env.imediato ? `Os dados de acesso foram enviados para ${env.email}.` : `E-mail com os dados de acesso na fila para ${env.email}: sem o Brevo ativo, sai na próxima rodada do GitHub Actions.`;
+          } catch (e) { msg.textContent = `Não foi possível enviar o e-mail (${e.message}). Entregue os dados acima pessoalmente.`; }
         });
       });
       $('#form-reset').addEventListener('click', (ev) => {
@@ -775,7 +781,7 @@
       $('#cred-copiar').addEventListener('click', async () => {
         try { await navigator.clipboard.writeText($('#cred-copiar').dataset.texto || ''); toast('Dados copiados.'); } catch { toast('Não foi possível copiar. Selecione e copie manualmente.', true); }
       });
-      $('#dlg-credencial').addEventListener('close', () => { $('#cred-dados').innerHTML = ''; $('#cred-copiar').dataset.texto = ''; });
+      $('#dlg-credencial').addEventListener('close', () => { $('#cred-email-msg').hidden = true; $('#cred-dados').innerHTML = ''; $('#cred-copiar').dataset.texto = ''; });
 
       // setores
       $('#set-novo').addEventListener('click', () => abrirSetor(null));
