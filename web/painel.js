@@ -751,7 +751,7 @@
           // e-mail formal com os dados de acesso (o texto é apagado do banco depois do envio)
           const msg = $('#cred-email-msg'); msg.textContent = 'Enviando os dados de acesso por e-mail…'; msg.hidden = false;
           try {
-            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade() });
+            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade(), p_logo_url: LP.estado.logoSrc === 'assets/logo.png' ? new URL('assets/logo.png', LP.enderecoSistema()).href : null });
             msg.textContent = env.imediato ? `Os dados de acesso foram enviados para ${env.email}.` : `E-mail com os dados de acesso na fila para ${env.email}: sem o Brevo ativo, sai na próxima rodada do GitHub Actions.`;
           } catch (e) { msg.textContent = `Não foi possível enviar o e-mail (${e.message}). Entregue os dados acima pessoalmente.`; }
         });

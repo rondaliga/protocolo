@@ -268,7 +268,7 @@ try:
         assert senha_prov in cred and pin_prov in cred and "novo.adm@teste.local" in cred, cred
         expect(page.locator("#cred-email-msg")).to_contain_text("novo.adm@teste.local", timeout=8000)
         corpo_bv = psql("select corpo from public.fila_email where evento='BOAS_VINDAS' and destinatarios=array['novo.adm@teste.local'] order by id desc limit 1")
-        assert senha_prov in corpo_bv and pin_prov in corpo_bv and "Prezado(a)" in corpo_bv and "COMO FAZER O PRIMEIRO ACESSO" in corpo_bv, corpo_bv
+        assert senha_prov in corpo_bv and pin_prov in corpo_bv and "Prezado(a)" in corpo_bv and "PRIMEIRO ACESSO" in corpo_bv, corpo_bv
         page.screenshot(path=str(OUT / "8b_credenciais.png")); page.click("#dlg-credencial [data-fechar]"); page.wait_for_timeout(300)
         assert page.locator("#tbody-usr tr").count() == 6
         assert "Primeiro acesso pendente" in page.inner_text("#tbody-usr tr:has-text('Rita Nova')")

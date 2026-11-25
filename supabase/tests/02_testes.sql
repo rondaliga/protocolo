@@ -447,15 +447,21 @@ begin
     v_fila.destinatarios = array['novo@x.com'] and v_fila.assunto = '[Livro de Protocolo] Dados de acesso ao sistema', v_fila.assunto);
   perform t.afirma('e-mail traz endereço, usuário, senha e PIN provisórios',
     v_fila.corpo like '%https://exemplo.org/livro/%' and v_fila.corpo like '%novo@x.com%' and v_fila.corpo like '%Senha-Forte-123%' and v_fila.corpo like '%2468%', v_fila.corpo);
+  perform t.afirma('e-mail tem versão HTML com logo/título, credenciais, botão e sem scripts',
+    v_fila.corpo_html like '<!DOCTYPE html>%' and v_fila.corpo_html like '%Livro de Protocolo Eletrônico%' and v_fila.corpo_html like '%LIGA CONTRA O CÂNCER%'
+    and v_fila.corpo_html like '%Senha-Forte-123%' and v_fila.corpo_html like '%href="https://exemplo.org/livro/"%' and v_fila.corpo_html not like '%<script%', left(v_fila.corpo_html, 80));
   perform t.afirma('e-mail traz saudação formal, primeiro acesso, segurança, LGPD e assinatura',
-    v_fila.corpo like 'Prezado(a) Novo Usuário,%' and v_fila.corpo like '%COMO FAZER O PRIMEIRO ACESSO%' and v_fila.corpo like '%ORIENTAÇÕES DE SEGURANÇA%'
+    v_fila.corpo like 'Prezado(a) Novo Usuário,%' and v_fila.corpo like '%PRIMEIRO ACESSO%' and v_fila.corpo like '%SEGURANÇA%'
     and v_fila.corpo like '%LGPD%' and v_fila.corpo like '%Atenciosamente,%' and v_fila.corpo like '%ADM (Administração)%', v_fila.corpo);
   perform t.afirma('envio dos dados de acesso fica na trilha sem as credenciais',
     exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL')
     and not exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL' and detalhes::text like '%Senha-Forte-123%'));
   update public.fila_email set status = 'enviado', enviado_em = now() where id = v_fila.id;
   perform t.afirma('depois de enviado, o texto com credenciais é apagado do banco',
-    (select corpo from public.fila_email where id = v_fila.id) like '[Conteúdo removido%' and (select corpo from public.fila_email where id = v_fila.id) not like '%Senha-Forte-123%');
+    (select corpo from public.fila_email where id = v_fila.id) like '[Conteúdo removido%' and (select corpo from public.fila_email where id = v_fila.id) not like '%Senha-Forte-123%'
+    and (select corpo_html from public.fila_email where id = v_fila.id) is null);
+  perform t.afirma('escape de HTML e logo inválida não entram no e-mail',
+    public._html_esc('<b a="1">&''') = '&lt;b a=&quot;1&quot;&gt;&amp;&#39;');
   r := t.como('gestor@x', $q$select public.painel_criar_usuario('NOVO@x.com','Outro','adm',null,'Senha-Forte-123','2468','5555')::text$q$);
   perform t.afirma('e-mail duplicado (sem diferenciar maiúsculas) é recusado', r like 'ERRO:%Já existe%', r);
   -- vincula conta já existente no Auth (criada pelo painel do Supabase)

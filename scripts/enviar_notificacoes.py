@@ -59,6 +59,8 @@ def main():
             msg["From"] = REMETENTE; msg["To"] = REMETENTE            # destinatários reais em cópia oculta
             msg["Bcc"] = ", ".join(item["destinatarios"]); msg["Subject"] = item["assunto"]
             msg.set_content(item["corpo"])
+            if item.get("corpo_html"):
+                msg.add_alternative(item["corpo_html"], subtype="html")
             try:
                 srv.send_message(msg, from_addr=REMETENTE, to_addrs=item["destinatarios"] + [REMETENTE])
                 rpc("integracao_marcar", {"p_segredo": SEGREDO, "p_id": item["id"], "p_ok": True})
