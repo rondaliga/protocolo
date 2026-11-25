@@ -63,6 +63,28 @@ def pdf_da_impressao(page, nome, paisagem):
     page.emulate_media(media="screen")
 
 
+CONTRASTE_JS = """() => {
+  const lum = (c) => { const v = c.match(/[\\d.]+/g).slice(0, 3).map(Number).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const fundo = (el) => { for (let e = el; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; const m = c.match(/[\\d.]+/g).map(Number); if (m.length < 4 || m[3] > 0.5) return c; } return 'rgb(255,255,255)'; };
+  const ruins = []; let n = 0;
+  document.querySelectorAll('#print-root *').forEach((el) => {
+    if (el.closest('.p-cruz') || el.closest('svg')) return;
+    if (![...el.childNodes].some((x) => x.nodeType === 3 && x.textContent.trim())) return;
+    n += 1; const a = lum(getComputedStyle(el).color), b = lum(fundo(el)); const r = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    if (r < 4) ruins.push(`${el.tagName}.${el.className} ${r.toFixed(1)}`);
+  });
+  return { n, ruins };
+}"""
+
+
+def contraste_na_impressao(page, esquema):
+    """texto legível (contraste >= 4) no #print-root com a mídia de impressão, no esquema de cores pedido"""
+    page.emulate_media(media="print", color_scheme=esquema)
+    r = page.evaluate(CONTRASTE_JS)
+    page.emulate_media(media="screen", color_scheme="light")
+    return r
+
+
 def esperar_toast(page, trecho):
     try:
         page.locator("#toast:not([hidden])", has_text=trecho).wait_for(timeout=8000)
@@ -101,12 +123,11 @@ try:
         page.fill("textarea[name=descricao]", "Ofício nº 123/2026 - 2ª Vara Cível <b>teste-xss</b>")
         # judicial exige foto
         page.select_option("#form-novo select[name=tipo]", "judicial")
-        assert page.locator("#lbl-urgente").is_visible()
+        assert page.locator("#lbl-urgente").count() == 0 and page.locator("#form-novo input[name=urgente]").count() == 0, "não há mais caixa de urgência"
         page.fill("#form-novo input[name=pin]", "1111"); page.click("#form-novo button[type=submit]")
         page.locator("#form-novo .erro").wait_for(state="visible"); print("sem foto:", page.inner_text("#form-novo .erro"))
         assert "foto" in page.inner_text("#form-novo .erro")
         page.set_input_files("#inp-foto", str(FOTO)); page.locator("#foto-previa").wait_for(state="visible")
-        page.check("#form-novo input[name=urgente]")
         page.fill("#form-novo input[name=pin]", "9999"); page.click("#form-novo button[type=submit]")
         page.wait_for_timeout(600); print("PIN errado:", page.inner_text("#form-novo .erro")); assert "PIN" in page.inner_text("#form-novo .erro")
         assinar(page, "#form-novo"); page.fill("#form-novo input[name=pin]", "1111")
@@ -211,6 +232,7 @@ try:
         # auditoria
         page.click("#btn-aba-auditoria"); page.click("#btn-verificar"); page.locator("#resultado-verificacao:not(:empty)").wait_for()
         print("auditoria:", page.inner_text("#resultado-verificacao")); assert "íntegra" in page.inner_text("#resultado-verificacao")
+        expect(page.locator("#tbody-audit")).to_contain_text("Ficha impressa", timeout=8000)
         txt = page.inner_text("#tbody-audit")
         assert "Livro impresso" in txt and "Ficha impressa" in txt and "Entrou no sistema" in txt and "Descrição corrigida" in txt
         assert "{" not in txt and "IMPRESSAO_" not in txt, "a trilha não deve mostrar JSON/códigos crus"
@@ -452,18 +474,18 @@ try:
         # ---- rascunho automático do novo protocolo
         import json as _json
         page.click("[data-aba=protocolos]"); page.click("#btn-novo")
-        page.select_option("#form-novo select[name=tipo]", "judicial"); page.check("#form-novo input[name=urgente]")
+        page.select_option("#form-novo select[name=tipo]", "judicial")
         page.fill("#form-novo textarea[name=descricao]", "Ofício de teste do rascunho 77/2026")
         page.set_input_files("#inp-foto", str(FOTO)); page.locator("#foto-previa").wait_for(state="visible"); page.wait_for_timeout(1200)
         bruto = page.evaluate("Object.entries(sessionStorage).filter(([k]) => k.startsWith('protocolo.rascunho.')).map(([k, v]) => v)")
         assert len(bruto) == 1, bruto
-        rasc = _json.loads(bruto[0]); assert rasc["descricao"].startswith("Ofício de teste") and rasc["tipo"] == "judicial" and rasc["urgente"] is True
+        rasc = _json.loads(bruto[0]); assert rasc["descricao"].startswith("Ofício de teste") and rasc["tipo"] == "judicial"
         assert rasc["foto"].startswith("data:image/jpeg;base64,"), "foto deveria ir no rascunho"
-        assert set(rasc) == {"tipo", "urgente", "descricao", "salvoEm", "foto"}, "o rascunho não pode guardar assinatura nem PIN"
+        assert set(rasc) == {"tipo", "descricao", "salvoEm", "foto"}, "o rascunho não pode guardar assinatura nem PIN"
         page.click("#dlg-novo [data-fechar]"); page.reload(); page.locator("#view-app").wait_for(state="visible"); page.wait_for_timeout(800)
         page.click("#btn-novo")
         assert page.input_value("#form-novo textarea[name=descricao]") == "Ofício de teste do rascunho 77/2026"
-        assert page.input_value("#form-novo select[name=tipo]") == "judicial" and page.is_checked("#form-novo input[name=urgente]")
+        assert page.input_value("#form-novo select[name=tipo]") == "judicial"
         assert page.locator("#rascunho-aviso").is_visible() and page.locator("#foto-previa").is_visible(), "rascunho e foto devem voltar"
         page.click("#rascunho-descartar"); page.wait_for_timeout(300)
         assert page.input_value("#form-novo textarea[name=descricao]") == "" and page.locator("#foto-previa").is_hidden() and page.locator("#rascunho-aviso").is_hidden()
@@ -479,12 +501,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "11 de 11" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "12 de 12" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 11
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 12
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -704,6 +726,75 @@ try:
         page.click("#btn-conta"); page.click("#btn-avisos"); expect(page.locator("#dlg-avisos[open]")).to_be_visible()
         expect(page.locator("#avisos-estado")).not_to_be_empty(timeout=4000)
         page.screenshot(path=str(OUT / "20_avisos_aparelho.png")); page.keyboard.press("Escape")
+
+        # =================== v12: QR na ficha, impressão no tema escuro, excluir usuário, link direto do QR ===================
+        import cv2, numpy as np, re as _re
+        page.click("[data-aba=protocolos]"); page.wait_for_timeout(400)
+        page.evaluate("document.documentElement.setAttribute('data-tema', 'escuro')")
+        page.locator("#tbody tr[data-id]").first.click(); page.locator("#dlg-detalhe[open]").wait_for()
+        numero_qr = page.inner_text("#detalhe-corpo h2").strip()
+        page.click("[data-acao=imprimir]"); page.wait_for_timeout(700)
+        expect(page.locator("#print-root.ficha .p-qr svg")).to_have_count(1)
+        svg = page.evaluate("document.querySelector('#print-root .p-qr svg').outerHTML")
+        assert "style=" not in svg and "<script" not in svg, "o QR não pode usar estilo em linha (CSP)"
+        pg2 = b.new_page(viewport={"width": 700, "height": 700}); pg2.set_content(f"<body style='margin:30px;background:#fff'>{svg.replace('width=\"100\" height=\"100\"', 'width=\"440\" height=\"440\"')}</body>")
+        pg2.screenshot(path=str(OUT / "qr_ficha.png")); pg2.close()
+        lido, _, _ = cv2.QRCodeDetectorAruco().detectAndDecode(cv2.imread(str(OUT / "qr_ficha.png")))
+        esperado = page.evaluate("location.origin + location.pathname") + "#p=" + numero_qr
+        print("QR lido:", lido); assert lido == esperado, (lido, esperado)
+        # tema escuro na tela + impressão: nada de letra clara sobre papel branco
+        r_esc = contraste_na_impressao(page, "dark"); print("contraste ficha (escuro):", r_esc["n"], "textos;", r_esc["ruins"] or "sem problemas")
+        assert r_esc["n"] > 10 and not r_esc["ruins"], r_esc
+        r_cla = contraste_na_impressao(page, "light"); assert not r_cla["ruins"], r_cla
+        pdf_da_impressao(page, "ficha_tema_escuro.pdf", False)
+        page.evaluate("document.getElementById('print-root').innerHTML=''")
+        page.click("#detalhe-corpo [data-fechar]")
+        page.click("#btn-imprimir-livro"); page.wait_for_timeout(1200)
+        r_liv = contraste_na_impressao(page, "dark"); print("contraste livro (escuro):", r_liv["n"], "textos;", r_liv["ruins"] or "sem problemas")
+        assert r_liv["n"] > 10 and not r_liv["ruins"], r_liv
+        page.evaluate("document.getElementById('print-root').innerHTML=''")
+        page.evaluate("document.documentElement.setAttribute('data-tema', 'claro')")
+
+        # excluir usuário: o botão só aparece para inativo
+        page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]")
+        page.locator("#tbody-usr tr").first.wait_for()
+        page.select_option("#usr-filtro-ativo", "ativos"); page.wait_for_timeout(300)
+        assert page.locator("#tbody-usr [data-uacao=excluir]").count() == 0, "usuário ativo não pode ser excluído"
+        page.select_option("#usr-filtro-ativo", "inativos"); page.wait_for_timeout(300)
+        linha = page.locator("#tbody-usr tr:has-text('Rita Nova')")
+        expect(linha.locator("[data-uacao=excluir]")).to_have_count(1)
+        linha.locator("[data-uacao=excluir]").click()
+        page.fill("#form-ativo input[name=pin]", "0000"); page.click("#form-ativo button[type=submit]")
+        page.locator("#form-ativo .erro").wait_for(state="visible"); assert "PIN" in page.inner_text("#form-ativo .erro")
+        page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
+        esperar_toast(page, "excluído"); page.wait_for_timeout(500)
+        assert page.locator("#tbody-usr tr:has-text('Rita Nova')").count() == 0
+        assert psql("select count(*) from public.perfis where email='novo.adm@teste.local'") == "0"
+        assert psql("select count(*) from public.auditoria where acao='USUARIO_EXCLUIDO'") == "1"
+        page.select_option("#usr-filtro-ativo", "ativos")
+
+        # link direto do QR: sem sessão guarda o número, depois do login abre o recebimento
+        psql("insert into public.protocolos (numero, descricao, status, created_by, tipo, urgente) select '2026-9101','Ofício do QR','pendente_adm', id, 'correspondencia', false from auth.users where email='portaria@teste.local'")
+        psql("select public._inserir_tramite((select id from public.protocolos where numero='2026-9101'),'2026-9101',1,(select user_id from public.perfis where email='portaria@teste.local'),'Maria (Portaria)',null,null,null,now())")
+        sair(page)
+        page.goto(URL + "#p=2026-9101"); page.locator("#form-login").wait_for(state="visible")
+        assert page.evaluate("location.hash") == "", "o endereço deve ser limpo depois de guardar o número"
+        page.fill("input[name=email]", "adm@teste.local"); page.fill("input[name=senha]", SENHA); page.click("#form-login button[type=submit]")
+        expect(page.locator("#dlg-confirmar[open]")).to_be_visible(timeout=10000)
+        assert "2026-9101" in page.inner_text("#detalhe-corpo h2")
+        page.screenshot(path=str(OUT / "21_qr_recebimento.png"))
+        page.keyboard.press("Escape"); page.evaluate("document.querySelectorAll('dialog[open]').forEach((d) => d.close())")
+        sair(page)
+        # quem não tem acesso ao protocolo recebe aviso e nada abre
+        page.goto(URL + "#p=2026-9101"); page.locator("#form-login").wait_for(state="visible")
+        page.fill("input[name=email]", "farmacia@teste.local"); page.fill("input[name=senha]", SENHA); page.click("#form-login button[type=submit]")
+        page.locator("#view-app").wait_for(state="visible")
+        esperar_toast(page, "sem permissão"); assert page.locator("#dlg-detalhe[open]").count() == 0
+        sair(page)
+        # número inexistente
+        page.goto(URL + "#p=2099-0001"); page.locator("#form-login").wait_for(state="visible")
+        page.fill("input[name=email]", "adm@teste.local"); page.fill("input[name=senha]", SENHA); page.click("#form-login button[type=submit]")
+        page.locator("#view-app").wait_for(state="visible"); esperar_toast(page, "não encontrado"); assert page.locator("#dlg-detalhe[open]").count() == 0
         b.close()
     print("\nE2E OK")
 finally:

@@ -710,3 +710,20 @@ table td.d, table td.detalhes { overflow-wrap: anywhere; }
 #push-chaves { display: grid; gap: .6rem; margin-top: .75rem; }
 #push-chaves input { width: 100%; font-family: ui-monospace, monospace; font-size: .8rem; }
 @media print { .grafico { height: 110px; } .kpis-rel { grid-template-columns: repeat(3, 1fr); } }
+
+/* IMPRESSÃO: sempre no tema claro (papel branco), mesmo que a tela esteja no tema escuro ou o aparelho prefira o escuro.
+   Sem isto, as variáveis do tema escuro deixavam o texto claro sobre o papel branco e as letras sumiam. */
+@media print {
+  :root, :root[data-tema="escuro"], :root[data-tema="claro"] { color-scheme: light !important; --azul: #1f4e6e !important; --azul-esc: #153a54 !important; --azul-claro: #e3ecf4 !important; --azul-borda: #bfd0df !important; --acao: #1f4e6e !important; --acao-hover: #153a54 !important; --acao-esc: #153a54 !important; --coral: #e0584b !important; --fundo: #f2f5f8 !important; --cartao: #ffffff !important; --borda: #d3dce5 !important; --sup: #ffffff !important; --sup-2: #f7f9fb !important; --hover: #f0f6fb !important; --vidro: rgba(255, 255, 255, .96) !important; --texto: #1b2733 !important; --suave: #5a6b7b !important; --mudo: #a3afbb !important; --foco: #86b6dd !important; --info-borda: #2a86c8 !important; --ambar: #8a5a00 !important; --ambar-bg: #fff2d1 !important; --info: #14507a !important; --info-bg: #dcecfa !important; --ok: #17663a !important; --ok-bg: #dcf3e5 !important; --erro: #a3271c !important; --erro-bg: #fde4e1 !important; --erro-forte: #a3271c !important; --erro-borda: #f0b3ad !important; --lar: #8a3b00 !important; --lar-bg: #ffd9b8 !important; --roxo: #4a2c82 !important; --roxo-bg: #e9e1f7 !important; --sombra: 0 1px 2px rgba(21, 58, 84, .06), 0 4px 14px rgba(21, 58, 84, .06) !important; --sombra-forte: 0 10px 40px rgba(21, 58, 84, .18) !important; --malha: radial-gradient(1100px 480px at 88% -8%, rgba(59, 148, 214, .17), transparent 62%), radial-gradient(800px 420px at -6% 2%, rgba(31, 95, 143, .10), transparent 58%) !important; --topo-grad: linear-gradient(180deg, #ffffff 0%, #f5f9fc 100%) !important; --btn-grad: linear-gradient(180deg, #2c70a2 0%, #1f4e6e 100%) !important; --btn-grad-hover: linear-gradient(180deg, #3380b6 0%, #245a82 100%) !important; --btn-sombra: 0 1px 0 rgba(255, 255, 255, .22) inset, 0 8px 16px -8px rgba(31, 78, 110, .75) !important; --marca-sombra: 0 6px 16px -4px rgba(21, 58, 84, .45) !important; --raio: 10px !important; }
+  #print-root td, #print-root th, #print-root p, #print-root span, #print-root small, #print-root b, #print-root i, #print-root div, #print-root li { color: #000; text-shadow: none; }
+  #print-root td { background: #fff !important; }
+  #print-root .p-tit h1, #print-root .p-sec { color: #24506f; }
+  #print-root .p-meta { color: #444; }
+  #print-root .p-cruz { color: #fff; }
+  .p-ficha-grade { display: grid; grid-template-columns: minmax(0, 1fr) 34mm; gap: 4mm; align-items: start; }
+  .p-ficha-grade .p-ficha-tab { table-layout: fixed; }
+  .p-ficha-tab td { overflow-wrap: anywhere; word-break: break-word; }
+  .p-qr { margin-top: 3mm; text-align: center; border: .3mm solid #000; padding: 1.5mm; break-inside: avoid; background: #fff; }
+  .p-qr svg { width: 28mm; height: 28mm; display: block; margin: 0 auto; }
+  .p-qr small { display: block; font: 6pt/1.25 Arial, sans-serif; color: #000; margin-top: 1mm; }
+}

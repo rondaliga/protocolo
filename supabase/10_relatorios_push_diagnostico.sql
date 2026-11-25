@@ -96,7 +96,7 @@ language plpgsql security definer set search_path = public, extensions as $$
 declare
   g public.perfis%rowtype := public._exigir_gestor();
   v_itens jsonb := '[]'::jsonb; v_aux text; v_n int; v_t text; v_sem text := '';
-  v_arquivos int := 11;
+  v_arquivos int := 12;
 begin
   -- cada item tem nivel: ok | aviso | erro
   -- Versão do banco

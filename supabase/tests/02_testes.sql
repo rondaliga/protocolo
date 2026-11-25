@@ -214,8 +214,6 @@ begin
   -- foto e regras do registro
   r := t.como('portaria@x', $q$select public.registrar_protocolo('Mandado de segurança - 3ª Vara','1111',null,'judicial',false,null)::text$q$);
   perform t.afirma('judicial exige foto', r like 'ERRO:%foto%', r);
-  r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta simples','1111',null,'correspondencia',true,null)::text$q$);
-  perform t.afirma('urgência só para judicial', r like 'ERRO:%urg%', r);
   r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta simples','1111',null,'outro',false,null)::text$q$);
   perform t.afirma('tipo inválido é recusado', r like 'ERRO:%', r);
 
@@ -705,7 +703,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 11 arquivos', (select count(*) from public.schema_versao) = 11 and public.versao_schema() = 11);
+  perform t.afirma('schema_versao registra os 12 arquivos', (select count(*) from public.schema_versao) = 12 and public.versao_schema() = 12);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -721,7 +719,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '11', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '12', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -1051,5 +1049,73 @@ begin
   perform t.afirma('backup não leva segredo do push', t.como('gestor@x', 'select public.exportar_backup()::text') not like '%' || repeat('s', 30) || '%');
   perform public.admin_desativar_push();
   perform t.afirma('com push desativado ninguém recebe a chave', t.como('adm@x', 'select coalesce(public.push_chave_publica(), ''nenhuma'')') = 'nenhuma');
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 12. QR Code (busca por número), urgência automática e exclusão de usuário
+-- ---------------------------------------------------------------------
+do $$
+declare r text; v_u uuid; v_id bigint; v_foto text; v_num text; v_fotoc text; v_ok boolean; v_ger uuid; v_por uuid;
+begin
+  v_por := (select id from auth.users where email = 'portaria@x');
+  -- toda demanda judicial é urgente, mesmo sem marcar; correspondência nunca é urgente (e não dá mais erro)
+  v_foto := v_por::text || '/' || gen_random_uuid()::text || '.jpg';
+  perform t.como('portaria@x', format($q$insert into storage.objects (bucket_id,name,owner,metadata) values ('protocolo-fotos',%L,auth.uid(),'{"size":1000}') returning 'ok'$q$, v_foto));
+  r := t.como('portaria@x', format($q$select public.registrar_protocolo('Mandado - urgência automática','1111',null,'judicial',false,%L)::text$q$, v_foto));
+  perform t.afirma('judicial registrado sem marcar urgência', r like '%"ok": true%', r);
+  v_id := (r::jsonb->>'id')::bigint; v_num := r::jsonb->>'numero';
+  perform t.afirma('judicial é urgente automaticamente', (select urgente from public.protocolos where id = v_id));
+  perform t.afirma('e-mail de chegada do judicial leva URGENTE no assunto',
+    exists (select 1 from public.fila_email where chave = 'chegada:' || v_id and assunto like '%URGENTE%'));
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Carta comum','1111',null,'correspondencia',true,null)::text$q$);
+  perform t.afirma('correspondência com urgência marcada é aceita e não é urgente', r like '%"ok": true%'
+    and not (select urgente from public.protocolos where id = (r::jsonb->>'id')::bigint), r);
+  v_ok := true;
+  begin update public.protocolos set urgente = false where id = v_id; v_ok := false; exception when others then v_ok := true; end;
+  perform t.afirma('urgência não pode ser alterada à mão', v_ok and (select urgente from public.protocolos where id = v_id));
+  perform t.afirma('nenhum judicial deixou de ser urgente', not exists (select 1 from public.protocolos where tipo = 'judicial' and not urgente)
+    and not exists (select 1 from public.protocolos where tipo <> 'judicial' and urgente));
+
+  -- QR Code: número -> protocolo
+  r := t.como('gestor@x', format($q$select public.protocolo_por_numero(%L)::text$q$, v_num));
+  perform t.afirma('QR: gestor localiza o protocolo pelo número', r = v_id::text, r);
+  r := t.como('adm@x', format($q$select public.protocolo_por_numero(%L)::text$q$, v_num));
+  perform t.afirma('QR: ADM localiza o protocolo pelo número', r = v_id::text, r);
+  r := t.como('far@x', format($q$select coalesce(public.protocolo_por_numero(%L)::text, 'nulo')$q$, v_num));
+  perform t.afirma('QR: setor sem acesso não enxerga protocolo que não é seu', r = 'nulo', r);
+  r := t.como('gestor@x', $q$select coalesce(public.protocolo_por_numero('0000-0000')::text, 'nulo')$q$);
+  perform t.afirma('QR: número inexistente devolve nulo', r = 'nulo', r);
+  r := t.como('gestor@x', $q$select coalesce(public.protocolo_por_numero('1; drop table x')::text, 'nulo')$q$);
+  perform t.afirma('QR: número malformado devolve nulo', r = 'nulo', r);
+  r := (select coalesce(t.como('anon', $q$select public.protocolo_por_numero('2026-0001')::text$q$), ''));
+  perform t.afirma('QR: sem login não há busca', r like 'ERRO:%' or r = '', r);
+
+  -- excluir usuário
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('apagar@x.com','Usuário a Apagar','portaria',null,'Senha-Forte-123','2468','5555')::text$q$);
+  v_u := (r::jsonb->>'user_id')::uuid;
+  perform t.afirma('usuário de teste criado', v_u is not null, r);
+  r := t.como('gestor@x', format($q$select public.painel_excluir_usuario(%L,'5555')::text$q$, v_u));
+  perform t.afirma('não exclui usuário ativo', r like 'ERRO:%inativo%', r);
+  perform t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,false,'5555')::text$q$, v_u));
+  r := t.como('gestor@x', format($q$select public.painel_excluir_usuario(%L,'0000')::text$q$, v_u));
+  perform t.afirma('exclusão exige o PIN do gestor', r like '%"ok": false%' and exists (select 1 from public.perfis where user_id = v_u), r);
+  r := t.como('adm@x', format($q$select public.painel_excluir_usuario(%L,'1111')::text$q$, v_u));
+  perform t.afirma('só gestor exclui usuário', r like 'ERRO:%' and exists (select 1 from public.perfis where user_id = v_u), r);
+  v_ger := (select id from auth.users where email = 'gestor@x');
+  r := t.como('gestor@x', format($q$select public.painel_excluir_usuario(%L,'5555')::text$q$, v_ger));
+  perform t.afirma('gestor não exclui a si mesmo', r like 'ERRO:%próprio%', r);
+  r := t.como('gestor@x', format($q$select public.painel_excluir_usuario(%L,'5555')::text$q$, v_u));
+  perform t.afirma('exclui usuário inativo sem histórico', r like '%"ok": true%', r);
+  perform t.afirma('perfil e login foram apagados', not exists (select 1 from public.perfis where user_id = v_u) and not exists (select 1 from auth.users where id = v_u));
+  perform t.afirma('exclusão fica na auditoria', exists (select 1 from public.auditoria where acao = 'USUARIO_EXCLUIDO' and detalhes->>'email' = 'apagar@x.com'));
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('apagar@x.com','Mesmo e-mail de novo','portaria',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('o e-mail pode ser reutilizado depois da exclusão', r like '%"ok": true%', r);
+  -- quem já participou de protocolos não pode ser excluído (o livro mantém o responsável)
+  perform t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,false,'5555')::text$q$, v_por));
+  r := t.como('gestor@x', format($q$select public.painel_excluir_usuario(%L,'5555')::text$q$, v_por));
+  perform t.afirma('usuário com histórico não é excluído', r like 'ERRO:%participou de protocolos%' and exists (select 1 from public.perfis where user_id = v_por)
+    and exists (select 1 from auth.users where id = v_por), r);
+  perform t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,true,'5555')::text$q$, v_por));
+  perform t.afirma('schema 12 registrado', exists (select 1 from public.schema_versao where versao = 12));
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='

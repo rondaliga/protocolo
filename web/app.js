@@ -335,7 +335,7 @@
     await recarregar();
     await verificarAlertas(false);
     if (avisosMod) avisosMod.sincronizar();
-    if (perfil.deveTrocarSenha || perfil.deveTrocarPin) abrirConta(true);
+    if (perfil.deveTrocarSenha || perfil.deveTrocarPin) abrirConta(true); else await abrirPendenteQr();
   }
 
   function trocarAba(n) {
@@ -420,6 +420,28 @@
   }
 
   // ------------------------------------------------------------------ detalhe / tramitação
+  // ---- QR Code da ficha: o link leva direto ao protocolo (e à tela de recebimento, se o usuário puder receber)
+  const QR_CHAVE = 'protocolo.qr';
+  const enderecoBase = () => (CFG.URL_SISTEMA || `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`).replace(/#.*$/, '');
+  const linkProtocolo = (numero) => `${enderecoBase()}#p=${encodeURIComponent(numero)}`;
+  function guardarQr() {      // lê #p=AAAA-NNNN do endereço, guarda para depois do login e limpa a barra de endereço
+    const m = /^#p=([0-9A-Za-z-]{3,30})$/.exec(location.hash || ''); if (!m) return;
+    try { sessionStorage.setItem(QR_CHAVE, m[1]); } catch { /* ok */ }
+    try { history.replaceState(null, '', location.pathname + location.search); } catch { /* ok */ }
+  }
+  async function abrirPendenteQr() {
+    let num = null; try { num = sessionStorage.getItem(QR_CHAVE); sessionStorage.removeItem(QR_CHAVE); } catch { /* ok */ }
+    if (!num || !estado.perfil) return;
+    try {
+      const id = await rpc('protocolo_por_numero', { p_numero: num });
+      if (!id) { toast(`Protocolo ${num} não encontrado ou sem permissão de acesso para o seu perfil.`, true); return; }
+      await abrirDetalhe(id);
+      const p = estado.aberto; if (!p || p.id !== id) return;
+      const receber = $(`#detalhe-corpo [data-acao="${p.status === 'pendente_adm' ? 'adm' : 'setor'}"]`);
+      if (receber) receber.click();             // abre direto a confirmação do recebimento (PIN e assinatura)
+    } catch (e) { toast(e.message, true); }
+  }
+
   async function abrirDetalhe(id) {
     try {
       const p = await rpc('detalhe_protocolo', { p_id: Number(id) });
@@ -571,7 +593,7 @@
   async function salvarRascunho() {
     const f = $('#form-novo'); if (!estado.sessao || !$('#dlg-novo').open) return;
     if (!f.descricao.value.trim() && !estado.fotoBlob) { limparRascunho(); return; }
-    const r = { tipo: f.tipo.value, urgente: f.urgente.checked, descricao: f.descricao.value, salvoEm: Date.now(), foto: null };
+    const r = { tipo: f.tipo.value, descricao: f.descricao.value, salvoEm: Date.now(), foto: null };
     try { if (estado.fotoBlob) r.foto = await blobParaDataUrl(estado.fotoBlob); } catch { /* sem foto no rascunho */ }
     try { sessionStorage.setItem(chaveRascunho(), JSON.stringify(r)); }
     catch { try { r.foto = null; sessionStorage.setItem(chaveRascunho(), JSON.stringify(r)); } catch { /* armazenamento cheio ou bloqueado */ } }
@@ -582,7 +604,6 @@
     if (!r || Date.now() - Number(r.salvoEm) > 24 * 3600 * 1000) { if (r) limparRascunho(); return; }
     if (['correspondencia', 'judicial'].includes(r.tipo)) f.tipo.value = r.tipo;
     ajustarTipo(); if (!f.tipo.value) return;
-    f.urgente.checked = !!r.urgente && f.tipo.value === 'judicial';
     f.descricao.value = String(r.descricao || '').slice(0, 300); $('#cont-desc').textContent = String(f.descricao.value.length);
     const blob = dataUrlParaBlob(r.foto);
     if (blob) {
@@ -601,10 +622,9 @@
   const fotoObrigatoria = () => $('#form-novo').tipo.value === 'judicial';
   function ajustarTipo() {
     const f = $('#form-novo'), jud = f.tipo.value === 'judicial';
-    $('#lbl-urgente').hidden = !jud; if (!jud) f.urgente.checked = false;
     $('#foto-obrig').textContent = jud ? '(obrigatória para demanda judicial)' : '(opcional)';
     $('#dica-tipo').textContent = jud
-      ? 'Demanda judicial: o prazo padrão é aplicado automaticamente e o ADM é avisado na hora. O ADM pode ajustar o prazo real depois.'
+      ? 'Demanda judicial: é sempre URGENTE, o prazo padrão é aplicado automaticamente e o ADM é avisado na hora. O ADM pode ajustar o prazo real depois.'
       : 'Correspondência comum: sem prazo. O ADM é avisado da chegada.';
   }
   function limparFoto() {
@@ -827,12 +847,14 @@
       const agora = new Date().toISOString();
       imprimir('ficha', `${cabecalhoImpressao('FICHA DO PROTOCOLO')}
         <p class="p-txt"><b>Orientação de preenchimento:</b> ${esc(ORIENTACAO)}</p>
-        <table class="p-ficha-tab"><tbody>
+        <div class="p-ficha-grade"><table class="p-ficha-tab"><tbody>
           <tr><th>Nº do protocolo</th><td><b class="p-num">${esc(p.numero)}</b></td></tr>
           <tr><th>Situação</th><td>${esc(STATUS[p.status])}${p.status !== 'concluido' ? ` — ${esc(p.status === 'pendente_adm' ? 'aguardando o ADM' : 'aguardando ' + (p.setor_destino_nome || 'o setor'))}` : ''}</td></tr>
           <tr><th>Tipo / prazo</th><td>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' (URGENTE)' : ''} · Prazo: ${p.prazo_data ? data(p.prazo_data + 'T12:00:00') : 'sem prazo informado'}</td></tr>
           <tr><th>Setor de destino</th><td>${esc(p.setor_destino_nome || e3Setor(p) || '—')}</td></tr>
           <tr><th>Descrição do documento</th><td>${esc(p.descricao)}</td></tr></tbody></table>
+          <div class="p-qr">${window.QR.svg(linkProtocolo(p.numero), { tamanho: 100, rotulo: `QR Code do protocolo ${p.numero}` })}
+            <small>Leia com a câmera do celular para abrir este protocolo e registrar o recebimento.</small></div></div>
         <div class="p-sec">Tramitação (3 etapas)</div>
         <table class="p-ficha-tab p-etapas"><thead><tr><th class="n">Etapa</th><th>Data</th><th>Hora</th><th>Responsável</th><th>Assinatura</th></tr></thead>
           <tbody>${linhas}</tbody></table>${corr}
@@ -887,6 +909,7 @@
     }, async () => {
       estado.contaObrigatoria = false; $('#dlg-conta').close();
       toast(obrigatoria ? 'Credenciais definidas. Bem-vindo(a)!' : 'Senha alterada com sucesso.');
+      if (obrigatoria) await abrirPendenteQr();
     });
   }
 
@@ -989,7 +1012,7 @@
     $('#form-novo').tipo.addEventListener('change', ajustarTipo);
     ['input', 'change'].forEach((ev) => $('#form-novo').addEventListener(ev, agendarRascunho));
     $('#rascunho-descartar').addEventListener('click', () => {
-      limparRascunho(); limparFoto(); const f = $('#form-novo'); f.descricao.value = ''; f.urgente.checked = false; $('#cont-desc').textContent = '0';
+      limparRascunho(); limparFoto(); const f = $('#form-novo'); f.descricao.value = ''; $('#cont-desc').textContent = '0';
       $('#rascunho-aviso').hidden = true; toast('Rascunho descartado.'); f.descricao.focus();
     });
     const usarFoto = async (arq, entrada) => {
@@ -1068,7 +1091,7 @@
       enviar(form, async () => {
         const caminho = estado.fotoBlob ? await enviarFoto(estado.fotoBlob) : null;
         return rpc('registrar_protocolo', { p_descricao: form.descricao.value, p_pin: form.pin.value, p_assinatura: ass.png, p_assinatura_modo: ass.modo,
-          p_tipo: form.tipo.value, p_urgente: form.urgente.checked, p_foto_caminho: caminho });
+          p_tipo: form.tipo.value, p_foto_caminho: caminho });
       }, async (r) => {
         clearTimeout(rascunhoTimer); limparRascunho(); $('#dlg-novo').close(); limparFoto();
         toast(`Protocolo ${r.numero} registrado — o ADM foi avisado.`); estado.pagina = 1; await recarregar();
@@ -1198,6 +1221,7 @@
   async function iniciar() {
     $$('[data-unidade]').forEach((e) => { e.textContent = `Unidade/Instituição: ${CFG.UNIDADE}`; });
     if (!CONFIG_OK) { mostrar('config'); return; }
+    guardarQr(); window.addEventListener('hashchange', () => { guardarQr(); if (estado.perfil && !estado.contaObrigatoria && $('#view-app') && !$('#view-app').hidden) abrirPendenteQr(); });
     montarAssinaturas();
     painelMod = window.criarPainel(Object.freeze({
       recarregarSessao: carregarSessaoConfig,

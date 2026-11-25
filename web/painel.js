@@ -27,7 +27,7 @@
       SETOR_SALVO: 'Setor salvo', PARAMETRO_ALTERADO: 'Regra alterada', FERIADO_SALVO: 'Feriado cadastrado',
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
-      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', ACESSO_ENVIADO_POR_EMAIL: 'Dados de acesso enviados por e-mail', RELATORIO_GERADO: 'Relatório gerado',
+      PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', USUARIO_EXCLUIDO: 'Usuário excluído', ACESSO_ENVIADO_POR_EMAIL: 'Dados de acesso enviados por e-mail', RELATORIO_GERADO: 'Relatório gerado',
     };
 
     // ---------- parâmetros: rótulos, formatos de hora e de duração (espelham as regras do banco)
@@ -92,7 +92,7 @@
         case 'USUARIO_ATUALIZADO':
           add(`${d.nome_anterior || ''}${d.nome_anterior !== d.nome ? ` → ${d.nome}` : ''} (${d.email || ''})`);
           add(`Perfil: ${PAPEIS[d.papel_anterior] || d.papel_anterior} → ${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''}`); break;
-        case 'USUARIO_ATIVADO': case 'USUARIO_DESATIVADO': case 'SENHA_REDEFINIDA': case 'PIN_REDEFINIDO': case 'PIN_DESBLOQUEADO':
+        case 'USUARIO_ATIVADO': case 'USUARIO_DESATIVADO': case 'USUARIO_EXCLUIDO': case 'SENHA_REDEFINIDA': case 'PIN_REDEFINIDO': case 'PIN_DESBLOQUEADO':
           add(`${d.nome || ''} (${d.email || ''})`); break;
         case 'SETOR_SALVO': add(`${d.setor} — ${d.ativo ? 'ativo' : 'inativo'}${d.novo ? ' (novo)' : ''}`); break;
         case 'PARAMETRO_ALTERADO': add(`${ROTULO_PARAM[d.chave] || d.chave}: ${d.anterior != null ? `${valorParam(d.chave, d.anterior)} → ` : ''}${valorParam(d.chave, d.valor)}`); break;
@@ -307,6 +307,7 @@
           ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear" data-ico="cadeado">Desbloquear PIN</button>' : ''}
           ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa" data-ico="escudo">Redefinir 2 etapas</button>' : ''}
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini ${u.ativo ? 'perigo' : 'sec'}" data-uacao="ativo">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}
+          ${u.user_id !== eu && !u.ativo ? '<button type="button" class="btn mini perigo" data-uacao="excluir" data-ico="lixeira">Excluir</button>' : ''}
         </td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
     }
     async function setoresAtivos() {
@@ -350,6 +351,12 @@
       const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.modo = 'mfa';
       $('#ativo-titulo').textContent = `Redefinir a verificação em duas etapas de ${u.nome}?`;
       $('#ativo-info').textContent = 'Use quando a pessoa perdeu ou trocou o celular. O cadastro atual é apagado, as sessões abertas são encerradas e ela entra só com a senha para cadastrar de novo (obrigatório se a exigência estiver ligada).';
+      $('#dlg-ativo').showModal(); f.pin.focus();
+    }
+    function abrirExcluir(u) {
+      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.modo = 'excluir';
+      $('#ativo-titulo').textContent = `Excluir o usuário ${u.nome}?`;
+      $('#ativo-info').textContent = 'A exclusão é definitiva: o cadastro e o login são apagados e o e-mail pode ser usado de novo. Só é possível para quem nunca participou de um protocolo; se houver histórico, o sistema recusa e o usuário permanece desativado. A exclusão fica registrada na auditoria.';
       $('#dlg-ativo').showModal(); f.pin.focus();
     }
     function abrirAtivo(u) {
@@ -496,7 +503,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 11${v < 11 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 12${v < 12 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -721,6 +728,7 @@
         else if (b.dataset.uacao === 'pin') abrirReset(u, 'pin');
         else if (b.dataset.uacao === 'ativo') abrirAtivo(u);
         else if (b.dataset.uacao === 'mfa') abrirResetMfa(u);
+        else if (b.dataset.uacao === 'excluir') abrirExcluir(u);
         else if (b.dataset.uacao === 'desbloquear') {
           try { await rpc('painel_desbloquear_pin', { p_user_id: u.user_id }); toast(`PIN de ${u.nome} desbloqueado.`); carregarUsuarios(); } catch (e) { falha(e); }
         }
@@ -751,7 +759,7 @@
           // e-mail formal com os dados de acesso (o texto é apagado do banco depois do envio)
           const msg = $('#cred-email-msg'); msg.textContent = 'Enviando os dados de acesso por e-mail…'; msg.hidden = false;
           try {
-            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade(), p_logo_url: LP.estado.logoSrc === 'assets/logo.png' ? new URL('assets/logo.png', LP.enderecoSistema()).href : null });
+            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade(), p_logo_url: LP.estado().logoSrc === 'assets/logo.png' ? new URL('assets/logo.png', LP.enderecoSistema()).href : null });
             msg.textContent = env.imediato ? `Os dados de acesso foram enviados para ${env.email}.` : `E-mail com os dados de acesso na fila para ${env.email}: sem o Brevo ativo, sai na próxima rodada do GitHub Actions.`;
           } catch (e) { msg.textContent = `Não foi possível enviar o e-mail (${e.message}). Entregue os dados acima pessoalmente.`; }
         });
@@ -773,6 +781,11 @@
         if (form.dataset.modo === 'mfa') {
           enviar(form, () => rpc('painel_resetar_mfa', { p_user_id: form.dataset.uid, p_pin_gestor: form.pin.value }),
             async () => { $('#dlg-ativo').close(); toast('Verificação em duas etapas redefinida.'); await carregarUsuarios(); });
+          return;
+        }
+        if (form.dataset.modo === 'excluir') {
+          enviar(form, () => rpc('painel_excluir_usuario', { p_user_id: form.dataset.uid, p_pin_gestor: form.pin.value }),
+            async () => { $('#dlg-ativo').close(); toast('Usuário excluído.'); await carregarUsuarios(); });
           return;
         }
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),

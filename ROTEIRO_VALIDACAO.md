@@ -22,7 +22,7 @@ Os testes automáticos rodam em um banco local e com simulações. Este roteiro 
 Use dois navegadores (ou uma janela anônima) para ver os usuários ao mesmo tempo.
 
 1. **Portaria**
-   - [ ] Registrar um protocolo **judicial urgente** com foto do envelope (teste a câmera no celular Android, se possível).
+   - [ ] Registrar um protocolo **judicial** (sai urgente automaticamente) com foto do envelope (teste a câmera no celular Android, se possível).
    - [ ] O protocolo aparece no livro com o número do ano.
 2. **ADM**
    - [ ] Recebe o **e-mail** em instantes e o **sino** acende em até 10 segundos.

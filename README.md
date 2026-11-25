@@ -120,7 +120,7 @@ python3 -m http.server 8080 --directory dist        # http://localhost:8080
 
 | Papel | Pode |
 |---|---|
-| `portaria` | Registrar protocolo (1ª etapa) com tipo, urgência e foto; corrigir descrição |
+| `portaria` | Registrar protocolo (1ª etapa) com tipo e foto (toda demanda judicial é urgente automaticamente); corrigir descrição |
 | `adm` | Confirmar a 2ª etapa **escolhendo o setor de destino**; ajustar prazo; corrigir descrição |
 | `super_setor` | Confirmar a 3ª etapa **no seu setor**; vê só o que o ADM encaminhou a ele (ou já recebeu) |
 | `gestor` | Consultar tudo, imprimir, corrigir descrição, ver e verificar a auditoria |
@@ -195,7 +195,7 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
 ## 4C. Versão 3 — painel de controle, gestor total, assinatura digitada, trilha organizada
 
 **Painel de controle (aba exclusiva do gestor)** — sub-abas:
-- **Usuários**: criar (e-mail, nome, papel, setor; senha e PIN provisórios gerados na tela), editar, **desativar/reativar**
+- **Usuários**: criar (e-mail, nome, papel, setor; senha e PIN provisórios gerados na tela), editar, **desativar/reativar** e **excluir** (só usuário inativo e que nunca participou de um protocolo)
   (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
   Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
 - Quatro abas: **Usuários**; **Sistema** (Identidade visual, Prazos e regras com parâmetros validados e Uso do sistema, com um índice "Ir para"); **Setores e feriados** (os feriados contam no cálculo de horas úteis); e **Backup e retenção**.
@@ -253,7 +253,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 ## 4E. Versão 5 — padronização, desempenho, retenção e usabilidade
 
 **Instalação e manutenção**
-- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 11 de 11") e é idempotente.
+- `supabase/05_melhorias.sql` cria a tabela `schema_versao` (o painel mostra "Versão do banco de dados: 12 de 12") e é idempotente.
 - `supabase/instalacao_completa.sql` instala ou atualiza tudo de uma vez. Regere com `python3 scripts/gerar_instalacao.py`; o CI recusa a publicação se ele estiver desatualizado.
 
 **Inatividade**
@@ -332,6 +332,13 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 - **Segurança:** assim que o e-mail é enviado, o texto (que contém as credenciais) é **apagado da fila no banco**; itens que não saírem em 7 dias também perdem o texto. A trilha registra `ACESSO_ENVIADO_POR_EMAIL` sem as credenciais. A tela "Entregue os dados de acesso" continua aparecendo ao gestor como segunda via.
 - Sem o Brevo ativo, o e-mail entra na fila e sai pela rotina do GitHub Actions.
 
+## 4K. QR Code na ficha, excluir usuário e urgência automática (migração 12)
+
+- **QR Code na ficha impressa:** gerado no próprio navegador (`web/qr.js`, JavaScript puro, sem biblioteca nem serviço externo) com o endereço do sistema + `#p=<número>`. Quem recebe o documento lê com a câmera do celular: o sistema abre o protocolo e, se o perfil puder receber naquela etapa (ADM ou setor de destino), já abre a confirmação do recebimento (PIN e assinatura). Se a pessoa ainda não estiver logada, o número é guardado, o login é feito normalmente e o protocolo abre em seguida. Quem não tem acesso ao protocolo recebe apenas o aviso "não encontrado ou sem permissão". O QR leva **só o número** (nenhum dado do documento). Para o endereço sair certo, confira `URL_SISTEMA` (ou use o endereço público do site).
+- **Excluir usuário (Painel → Usuários):** o botão **Excluir** só aparece para usuário **inativo**. Pede o PIN do gestor, apaga o cadastro e o login (o e-mail pode ser reutilizado) e registra "Usuário excluído" na auditoria. Quem já participou de protocolos (registro, recebimento, correção…) **não pode ser excluído**, porque o livro precisa manter o responsável: nesse caso o sistema recusa e o usuário continua desativado.
+- **Urgência automática:** a caixa "urgente" saiu do formulário. Toda demanda judicial é urgente (regra no banco: gatilho de inserção) e a urgência não é editável. Os judiciais já existentes passam a constar como urgentes na migração.
+- **Impressão no tema escuro:** a impressão sempre usa as cores do tema claro (papel branco), mesmo com a tela no tema escuro ou o aparelho preferindo o escuro. Corrige as letras que sumiam.
+
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 
 ### Backup agendado e cifrado (`.github/workflows/backup.yml`)
@@ -363,7 +370,7 @@ O botão "Baixar backup (JSON)" do painel continua útil para uma cópia imediat
 
 ### Aviso antes do logout e rascunho
 - No último minuto de inatividade aparece "Você ainda está aí?" com contagem regressiva; *Continuar conectado* reinicia o tempo.
-- O formulário de **novo protocolo** guarda um rascunho (tipo, urgência, descrição e foto) no navegador a cada alteração. Fica em `sessionStorage` (some ao fechar a aba), por usuário, por 24 h. **Assinatura e PIN nunca são guardados.** Sair voluntariamente apaga o rascunho; o logout por inatividade o mantém para a pessoa retomar. Há o botão *Descartar rascunho*.
+- O formulário de **novo protocolo** guarda um rascunho (tipo, descrição e foto) no navegador a cada alteração. Fica em `sessionStorage` (some ao fechar a aba), por usuário, por 24 h. **Assinatura e PIN nunca são guardados.** Sair voluntariamente apaga o rascunho; o logout por inatividade o mantém para a pessoa retomar. Há o botão *Descartar rascunho*.
 
 ## 5. Segurança — decisões adotadas
 
