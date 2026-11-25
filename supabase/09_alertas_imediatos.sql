@@ -215,7 +215,7 @@ end $$;
 
 create or replace function public.admin_desativar_brevo() returns text
 language sql security definer set search_path = public as $$
-  update public.email_brevo set ativo = false, atualizado_em = now();
+  update public.email_brevo set ativo = false, atualizado_em = now() where id = 1;
   select 'OK: envio imediato desativado (a rotina de SMTP continua valendo, se configurada).'::text
 $$;
 

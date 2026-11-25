@@ -25,7 +25,7 @@ begin
   create temporary table if not exists _rel_base (
     id bigint, numero text, tipo text, urgente boolean, status text, prazo date, devolvido boolean,
     dia date, t1 timestamptz, t2 timestamptz, t3 timestamptz, setor text) on commit drop;
-  delete from _rel_base;
+  delete from _rel_base where true;
   insert into _rel_base
   select p.id, p.numero, p.tipo, p.urgente, p.status, p.prazo_data, coalesce(p.devolvido, false),
          (p.created_at at time zone v_fuso)::date, t1.recebido_em, t2.recebido_em, t3.recebido_em,
@@ -287,7 +287,7 @@ end $$;
 
 create or replace function public.admin_desativar_push() returns text
 language sql security definer set search_path = public as $$
-  update public.push_config set ativo = false, atualizado_em = now();
+  update public.push_config set ativo = false, atualizado_em = now() where id = 1;
   select 'OK: avisos no aparelho desativados.'::text
 $$;
 
