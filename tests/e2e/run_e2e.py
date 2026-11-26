@@ -317,16 +317,20 @@ try:
         page.wait_for_timeout(600); assert "PIN" in page.inner_text("#form-usuario .erro")                   # PIN do gestor errado
         page.fill("#form-usuario input[name=pin]", "5556"); page.click("#form-usuario button[type=submit]")
         page.locator("#dlg-credencial[open]").wait_for(); cred = page.inner_text("#cred-dados")
-        # cada dado tem o seu botão Copiar e copia exatamente o valor (sem espaços nem recuos)
-        assert page.locator("#cred-dados .cred-item").count() == 3 and page.locator("#cred-dados [data-copia]").count() == 3 and "http" not in page.inner_text("#cred-dados")
+        # criação: 4 dados (endereço, usuário, senha, PIN), sem botões por item e com um único "Copiar tudo"
+        assert page.locator("#cred-dados .cred-item").count() == 4 and page.locator("#cred-dados [data-copia]").count() == 0
+        rots = page.evaluate("[...document.querySelectorAll('.cred-rot')].map((e) => e.textContent)")
+        assert rots == ["Endereço do site", "Usuário", "Senha provisória", "PIN provisório"], rots
+        assert "http" in cred and page.locator("#cred-copiar-tudo").is_visible()
         page.evaluate("window.__copiado = []; navigator.clipboard.writeText = (t) => { window.__copiado.push(t); return Promise.resolve(); }; 0")
-        for i in range(3): page.locator("#cred-dados [data-copia]").nth(i).click(); page.wait_for_timeout(120)
-        copiado = page.evaluate("window.__copiado"); print("copiado:", copiado[0])
-        assert len(copiado) == 3 and all(c == c.strip() and "\n" not in c and c for c in copiado), copiado
-        assert copiado[0] == "novo.adm@teste.local" and len(copiado[1]) >= 10 and copiado[2].isdigit()
-        assert "Copiar tudo" not in page.inner_text("#dlg-credencial") and page.evaluate("getComputedStyle(document.querySelector('.cred-rot')).userSelect") == "none", "o rótulo não deve ser copiado junto"
-        assert page.evaluate("[...document.querySelectorAll('.cred-val')].every((e) => e.textContent === e.textContent.trim())")
-        expect(page.locator("#cred-dados .copiado")).to_have_count(0, timeout=4000)
+        page.click("#cred-copiar-tudo"); page.wait_for_timeout(200)
+        copiado = page.evaluate("window.__copiado"); print("copiado:", copiado)
+        assert len(copiado) == 1; linhas_c = copiado[0].split("\n")
+        assert len(linhas_c) == 4 and all(l == l.strip() for l in linhas_c), copiado
+        assert linhas_c[0].startswith("Endereço do site: http") and linhas_c[1] == "Usuário: novo.adm@teste.local"
+        assert linhas_c[2] == "Senha provisória: " + senha_prov and linhas_c[3] == "PIN provisório: " + pin_prov, linhas_c
+        assert page.evaluate("getComputedStyle(document.querySelector('.cred-rot')).userSelect") == "none"
+        expect(page.locator("#cred-copiar-tudo.copiado")).to_have_count(0, timeout=4000)
         assert senha_prov in cred and pin_prov in cred and "novo.adm@teste.local" in cred, cred
         expect(page.locator("#cred-email-msg")).to_contain_text("novo.adm@teste.local", timeout=8000)
         corpo_bv = psql("select corpo from public.fila_email where evento='BOAS_VINDAS' and destinatarios=array['novo.adm@teste.local'] order by id desc limit 1")

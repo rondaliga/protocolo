@@ -331,14 +331,19 @@
     }
     const ajustarSetor = () => { const f = $('#form-usuario'); $('#lbl-usr-setor').hidden = f.papel.value !== 'super_setor'; };
 
-    function mostrarCredenciais(linhas, nome, titulo) {
-      // um cartão por dado; o botão Copiar copia exatamente o valor (sem espaços, recuos nem rótulo)
+    function mostrarCredenciais(linhas, nome, titulo, copiarTudo) {
+      // copiarTudo (criação do acesso): lista simples + um único botão "Copiar tudo" (rótulo: valor, sem recuos).
+      // nos demais casos (nova senha/PIN): um botão Copiar por dado, que copia exatamente o valor.
       $('#cred-titulo').textContent = titulo || 'Dados de acesso';
       $('#cred-quem').textContent = nome || '';
-      $('#cred-dados').innerHTML = linhas.map(([k, v, copiavel]) => {
+      const dl = $('#cred-dados'); dl.classList.toggle('cred-lista', !!copiarTudo);
+      dl.innerHTML = linhas.map(([k, v, copiavel]) => {
         const val = String(v).trim();
-        return `<div class="cred-item"><div class="cred-info"><span class="cred-rot">${esc(k)}</span><span class="cred-val${copiavel === false ? ' cred-texto' : ''}">${esc(val)}</span></div>${copiavel === false ? '' : `<button type="button" class="btn mini sec cred-cp" data-ico="copiar" data-copia="${esc(val)}" aria-label="Copiar: ${esc(k)}">Copiar</button>`}</div>`;
+        const bt = copiarTudo || copiavel === false ? '' : `<button type="button" class="btn mini sec cred-cp" data-ico="copiar" data-copia="${esc(val)}" aria-label="Copiar: ${esc(k)}">Copiar</button>`;
+        return `<div class="cred-item"><div class="cred-info"><span class="cred-rot">${esc(k)}</span><span class="cred-val${copiavel === false ? ' cred-texto' : ''}">${esc(val)}</span></div>${bt}</div>`;
       }).join('');
+      const tudo = $('#cred-copiar-tudo'); tudo.hidden = !copiarTudo;
+      tudo.dataset.copia = copiarTudo ? linhas.map(([k, v]) => `${k}: ${String(v).trim()}`).join('\n') : '';
       $('#dlg-credencial').showModal();
     }
     async function copiarTexto(texto) {
@@ -761,10 +766,10 @@
         enviar(form, () => rpc('painel_criar_usuario', { p_email: email, p_nome: form.nome.value, p_papel: form.papel.value, p_setor_id: setor,
           p_senha: senha || null, p_pin: pin, p_pin_gestor: form.pin.value }), async (r) => {
           $('#dlg-usuario').close(); await carregarUsuarios();
-          const linhas = [['Usuário', email]];
+          const linhas = [['Endereço do site', LP.enderecoSistema()], ['Usuário', email]];
           linhas.push(r.conta_nova ? ['Senha provisória', senha] : ['Senha', 'a mesma que o usuário já utiliza', false]);
           linhas.push(['PIN provisório', pin]);
-          mostrarCredenciais(linhas, nome, 'Acesso criado');
+          mostrarCredenciais(linhas, nome, 'Acesso criado', true);
           toast(`Usuário ${nome} criado.`);
           // e-mail formal com os dados de acesso (o texto é apagado do banco depois do envio)
           const msg = $('#cred-email-msg'); msg.textContent = 'Enviando os dados de acesso por e-mail…'; msg.hidden = false;
@@ -801,8 +806,8 @@
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),
           async () => { $('#dlg-ativo').close(); toast(ativar ? 'Usuário reativado.' : 'Usuário desativado.'); await carregarUsuarios(); });
       });
-      $('#cred-dados').addEventListener('click', async (ev) => {
-        const b = ev.target.closest('[data-copia]'); if (!b) return;
+      $('#dlg-credencial').addEventListener('click', async (ev) => {
+        const b = ev.target.closest('[data-copia]'); if (!b || !b.dataset.copia) return;
         const no = [...b.childNodes].reverse().find((n) => n.nodeType === 3); const antes = no ? no.textContent : '';   // só o texto; o ícone permanece
         if (await copiarTexto(b.dataset.copia)) { if (no) no.textContent = 'Copiado!'; b.classList.add('copiado'); setTimeout(() => { if (no) no.textContent = antes; b.classList.remove('copiado'); }, 1600); }
         else toast('Não foi possível copiar. Selecione o texto e copie manualmente.', true);

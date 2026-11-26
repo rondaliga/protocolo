@@ -747,7 +747,8 @@ table td.d, table td.detalhes { overflow-wrap: anywhere; }
 .cred-rot { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); user-select: none; -webkit-user-select: none; }
 .cred-val { font: 600 1.12rem/1.35 Consolas, Menlo, 'Courier New', monospace; color: var(--texto); user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
 .cred-val.cred-texto { font: 500 .98rem/1.35 inherit; font-family: inherit; user-select: text; -webkit-user-select: text; color: var(--suave); }
+.cred-lista .cred-item { padding: .65rem 1rem; }
 .cred-cp { flex: none; white-space: nowrap; }
-.cred-cp.copiado { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.cred-cp.copiado, #cred-copiar-tudo.copiado { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 .cred-aviso { margin: 0 0 .6rem; font-size: .88rem; color: var(--suave); }
 .cred-email { margin: 0 0 .8rem; padding: .55rem .8rem; border-radius: 8px; font-size: .88rem; line-height: 1.4; background: var(--ok-bg); color: var(--ok); }
