@@ -526,6 +526,20 @@
   </div>
 </dialog>
 
+<!-- ============ AVISO: IMPRIMIR A FOLHA DE IDENTIFICAÇÃO (após registrar) ============ -->
+<dialog id="dlg-folha">
+  <div class="modal-corpo" id="folha-corpo">
+    <h2 data-ico="ok">Protocolo registrado</h2>
+    <div class="resumo-doc"><strong id="folha-numero"></strong><span id="folha-desc"></span></div>
+    <p class="aviso-folha"><strong>Imprima agora a folha de identificação</strong> e anexe-a ao documento físico. Ela traz o QR Code que o ADM e o setor vão ler com o celular para registrar o recebimento.</p>
+    <p class="dica">Esqueceu ou deu problema? Abra o protocolo e use <em>Imprimir folha de identificação</em> quando quiser.</p>
+    <div class="modal-acoes">
+      <button type="button" class="btn sec" id="folha-depois" data-ico="fechar">Imprimir depois</button>
+      <button type="button" class="btn primario" id="folha-imprimir" data-ico="imprimir">Imprimir folha de identificação</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- ============ PAINEL: DETALHE ============ -->
 <dialog id="dlg-detalhe" class="gaveta"><div class="modal-corpo" id="detalhe-corpo"></div></dialog>
 

@@ -19,7 +19,7 @@
       PROTOCOLO_CRIADO: 'Protocolo registrado (1ª etapa)', RECEBIMENTO_ADM: 'Recebimento do ADM (2ª etapa)',
       RECEBIMENTO_SETOR: 'Recebimento do setor (3ª etapa)', DESCRICAO_CORRIGIDA: 'Descrição corrigida',
       PRAZO_AJUSTADO: 'Prazo ajustado', PROTOCOLO_REENCAMINHADO: 'Protocolo reencaminhado', PROTOCOLO_DEVOLVIDO: 'Protocolo devolvido ao ADM', ALERTA_SLA: 'Aviso: tempo máximo excedido', ALERTA_PRAZO_VENCIDO: 'Aviso: prazo vencido',
-      ALERTA_PRAZO_PROXIMO: 'Aviso: prazo próximo', IMPRESSAO_FICHA: 'Ficha impressa', IMPRESSAO_LIVRO: 'Livro impresso',
+      ALERTA_PRAZO_PROXIMO: 'Aviso: prazo próximo', IMPRESSAO_FICHA: 'Ficha de tramitação impressa', IMPRESSAO_FOLHA: 'Folha de identificação impressa', IMPRESSAO_LIVRO: 'Livro impresso',
       IMPRESSAO_TRILHA: 'Trilha impressa ou exportada', PIN_ALTERADO: 'PIN alterado pelo próprio usuário',
       SENHA_ALTERADA: 'Senha alterada pelo próprio usuário', PIN_REDEFINIDO: 'PIN redefinido pelo gestor',
       PIN_DESBLOQUEADO: 'PIN desbloqueado', SENHA_REDEFINIDA: 'Senha redefinida pelo gestor', USUARIO_CRIADO: 'Usuário criado',

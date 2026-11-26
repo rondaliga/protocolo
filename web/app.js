@@ -521,7 +521,8 @@
           ${podePrazo ? '<button class="btn sec" type="button" data-acao="prazo" data-ico="cronometro">Ajustar prazo</button>' : ''}
           ${podeReenc ? `<button class="btn sec" type="button" data-acao="reencaminhar" data-ico="encaminhar">${p.devolvido ? 'Reencaminhar a um setor' : 'Reencaminhar'}</button>` : ''}
           ${podeDevolver ? '<button class="btn sec" type="button" data-acao="devolver" data-ico="devolver">Devolver ao ADM</button>' : ''}
-          <button class="btn sec" type="button" data-acao="imprimir" data-ico="imprimir">Imprimir ficha / PDF</button>
+          <button class="btn sec" type="button" data-acao="folha" data-ico="imprimir" title="Folha com o QR Code, para anexar ao documento físico">Imprimir folha de identificação</button>
+          <button class="btn sec" type="button" data-acao="imprimir" data-ico="imprimir" title="Histórico completo da tramitação, com assinaturas. Imprima só se necessário">Imprimir ficha de tramitação</button>
           ${papel === 'gestor' ? '<button class="btn perigo" type="button" data-acao="excluir" data-ico="lixeira">Excluir protocolo</button>' : ''}
         </div>
         <div class="det-rodape-pri">
@@ -832,6 +833,28 @@
 
   const e3Setor = (p) => ((p.etapas || []).find((e) => e.etapa === 3) || {}).setor;
 
+  // Folha de identificação: vai anexada ao documento físico; traz o QR Code grande e só os dados da solicitação
+  async function imprimirFolha(p) {
+    try {
+      if (!p) return;
+      await rpc('registrar_exportacao', { p_tipo: 'FOLHA', p_protocolo_id: p.id });
+      imprimir('folha', `${cabecalhoImpressao('FOLHA DE IDENTIFICAÇÃO DO PROTOCOLO')}
+        <p class="p-folha-uso"><b>Anexe esta folha ao documento.</b> Quem receber o documento (ADM ou setor) lê o QR Code com a câmera do celular
+          e o sistema abre este protocolo, pronto para registrar o recebimento.</p>
+        ${p.urgente ? '<div class="p-folha-urg">URGENTE — DEMANDA JUDICIAL</div>' : ''}
+        <div class="p-folha-qr">${window.QR.svg(linkProtocolo(p.numero), { tamanho: 100, rotulo: `QR Code do protocolo ${p.numero}` })}</div>
+        <div class="p-folha-num">${esc(p.numero)}</div>
+        <table class="p-ficha-tab"><tbody>
+          <tr><th>Tipo</th><td>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}</td></tr>
+          <tr><th>Registrado em</th><td>${data(p.created_at)} às ${hora(p.created_at, true)}</td></tr>
+          <tr><th>Registrado por</th><td>${esc(((p.etapas || []).find((e) => e.etapa === 1) || {}).usuario || '—')}</td></tr>
+          <tr><th>Descrição do documento</th><td>${esc(p.descricao)}</td></tr></tbody></table>
+        <ol class="p-folha-passos"><li>Abra a câmera do celular e aponte para o QR Code.</li><li>Toque no endereço que aparecer e entre no sistema.</li>
+          <li>Confira o número, informe o seu PIN e assine para registrar o recebimento.</li></ol>
+        <p class="p-meta">Se o QR Code não abrir, entre no sistema e procure o protocolo ${esc(p.numero)}. Esta folha não substitui a ficha de tramitação.</p>${rodapeImpressao()}`);
+    } catch (e) { toast(e.message, true); }
+  }
+
   async function imprimirFicha() {
     const p = estado.aberto;
     try {
@@ -845,16 +868,14 @@
           <td><i>${esc(c.anterior)}</i> → ${esc(c.nova)}<br><small>Justificativa: ${esc(c.justificativa)}</small></td></tr>`).join('')}</tbody></table>` : '';
       const selos = etapasCompletas(p).filter((e) => e.feito).map((e) => `<div class="p-selo">Etapa ${e.n}: ${esc(e.selo)}</div>`).join('');
       const agora = new Date().toISOString();
-      imprimir('ficha', `${cabecalhoImpressao('FICHA DO PROTOCOLO')}
+      imprimir('ficha', `${cabecalhoImpressao('FICHA DE TRAMITAÇÃO — HISTÓRICO COMPLETO')}
         <p class="p-txt"><b>Orientação de preenchimento:</b> ${esc(ORIENTACAO)}</p>
-        <div class="p-ficha-grade"><table class="p-ficha-tab"><tbody>
+        <table class="p-ficha-tab"><tbody>
           <tr><th>Nº do protocolo</th><td><b class="p-num">${esc(p.numero)}</b></td></tr>
           <tr><th>Situação</th><td>${esc(STATUS[p.status])}${p.status !== 'concluido' ? ` — ${esc(p.status === 'pendente_adm' ? 'aguardando o ADM' : 'aguardando ' + (p.setor_destino_nome || 'o setor'))}` : ''}</td></tr>
           <tr><th>Tipo / prazo</th><td>${p.tipo === 'judicial' ? 'Demanda judicial' : 'Correspondência'}${p.urgente ? ' (URGENTE)' : ''} · Prazo: ${p.prazo_data ? data(p.prazo_data + 'T12:00:00') : 'sem prazo informado'}</td></tr>
           <tr><th>Setor de destino</th><td>${esc(p.setor_destino_nome || e3Setor(p) || '—')}</td></tr>
           <tr><th>Descrição do documento</th><td>${esc(p.descricao)}</td></tr></tbody></table>
-          <div class="p-qr">${window.QR.svg(linkProtocolo(p.numero), { tamanho: 100, rotulo: `QR Code do protocolo ${p.numero}` })}
-            <small>Leia com a câmera do celular para abrir este protocolo e registrar o recebimento.</small></div></div>
         <div class="p-sec">Tramitação (3 etapas)</div>
         <table class="p-ficha-tab p-etapas"><thead><tr><th class="n">Etapa</th><th>Data</th><th>Hora</th><th>Responsável</th><th>Assinatura</th></tr></thead>
           <tbody>${linhas}</tbody></table>${corr}
@@ -1000,7 +1021,7 @@
 
     $('#detalhe-corpo').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-acao]'); if (!b) return;
-      ({ imprimir: imprimirFicha, corrigir: abrirCorrecao, prazo: abrirPrazo, reencaminhar: () => abrirMover('reencaminhar'), devolver: () => abrirMover('devolver'), excluir: abrirExclusao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
+      ({ imprimir: imprimirFicha, folha: () => imprimirFolha(estado.aberto), corrigir: abrirCorrecao, prazo: abrirPrazo, reencaminhar: () => abrirMover('reencaminhar'), devolver: () => abrirMover('devolver'), excluir: abrirExclusao, adm: () => abrirConfirmar(2), setor: () => abrirConfirmar(3) })[b.dataset.acao]();
     });
     document.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-fechar]')) ev.target.closest('dialog').close();
@@ -1095,9 +1116,17 @@
       }, async (r) => {
         clearTimeout(rascunhoTimer); limparRascunho(); $('#dlg-novo').close(); limparFoto();
         toast(`Protocolo ${r.numero} registrado — o ADM foi avisado.`); estado.pagina = 1; await recarregar();
+        estado.folhaId = r.id; $('#folha-numero').textContent = r.numero; $('#folha-desc').textContent = form.descricao.value;
+        $('#dlg-folha').showModal(); $('#folha-imprimir').focus();      // aviso: imprimir a folha de identificação
       });
     });
 
+
+    $('#folha-depois').addEventListener('click', () => { $('#dlg-folha').close(); estado.folhaId = null; });
+    $('#folha-imprimir').addEventListener('click', async () => {
+      const id = estado.folhaId; if (!id) return;
+      try { const p = await rpc('detalhe_protocolo', { p_id: Number(id) }); $('#dlg-folha').close(); estado.folhaId = null; await imprimirFolha(p); } catch (e) { toast(e.message, true); }
+    });
 
     $('#form-excluir').addEventListener('submit', (ev) => {
       ev.preventDefault(); const form = ev.target;

@@ -1076,6 +1076,13 @@ begin
   perform t.afirma('nenhum judicial deixou de ser urgente', not exists (select 1 from public.protocolos where tipo = 'judicial' and not urgente)
     and not exists (select 1 from public.protocolos where tipo <> 'judicial' and urgente));
 
+  -- impressão da folha de identificação entra na auditoria
+  r := t.como('portaria@x', format($q$select public.registrar_exportacao('FOLHA', %s)::text$q$, v_id));
+  perform t.afirma('impressão da folha de identificação é auditada', r not like 'ERRO:%'
+    and exists (select 1 from public.auditoria where acao = 'IMPRESSAO_FOLHA' and detalhes->>'numero' = v_num), r);
+  r := t.como('portaria@x', $q$select public.registrar_exportacao('OUTRA')::text$q$);
+  perform t.afirma('tipo de impressão inválido é recusado', r like 'ERRO:%', r);
+
   -- QR Code: número -> protocolo
   r := t.como('gestor@x', format($q$select public.protocolo_por_numero(%L)::text$q$, v_num));
   perform t.afirma('QR: gestor localiza o protocolo pelo número', r = v_id::text, r);

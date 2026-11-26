@@ -4351,6 +4351,27 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- ---------- 4. impressão da folha de identificação (QR Code) entra na trilha de auditoria
+create or replace function public.registrar_exportacao(
+  p_tipo text, p_protocolo_id bigint default null, p_filtros text default null) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_uid uuid := public._uid(); v_perfil public.perfis%rowtype; v_num text; v_det jsonb := '{}'::jsonb;
+begin
+  select * into v_perfil from public.perfis where user_id = v_uid and ativo;
+  if not found then raise exception 'Perfil não encontrado.' using errcode = '42501'; end if;
+  if p_tipo not in ('FICHA', 'FOLHA', 'LIVRO', 'TRILHA') then raise exception 'Tipo inválido.'; end if;
+  if p_tipo = 'TRILHA' and v_perfil.papel <> 'gestor' then raise exception 'Apenas o gestor exporta a trilha.' using errcode = '42501'; end if;
+  if p_protocolo_id is not null then
+    select numero into v_num from public.protocolos where id = p_protocolo_id and public.pode_ver_protocolo(id);
+    if v_num is null then raise exception 'Protocolo não encontrado.'; end if;
+    v_det := v_det || jsonb_build_object('numero', v_num);
+  end if;
+  if nullif(btrim(coalesce(p_filtros, '')), '') is not null then
+    v_det := v_det || jsonb_build_object('filtros', left(btrim(p_filtros), 300));
+  end if;
+  perform public._auditar(v_uid, v_perfil.nome, 'IMPRESSAO_' || p_tipo, p_protocolo_id, v_det);
+end $$;
+
 insert into public.schema_versao (versao, arquivo) values (12, '12_qr_excluir_usuario.sql') on conflict (versao) do nothing;
 
 revoke all on function public.protocolo_por_numero(text), public.painel_excluir_usuario(uuid, text),

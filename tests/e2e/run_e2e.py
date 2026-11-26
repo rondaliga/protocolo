@@ -85,6 +85,19 @@ def contraste_na_impressao(page, esquema):
     return r
 
 
+def fechar_folha(page):
+    """depois de registrar, o sistema pede para imprimir a folha de identificação: aqui, 'imprimir depois'"""
+    expect(page.locator("#dlg-folha[open]")).to_be_visible(timeout=6000)
+    page.click("#folha-depois"); expect(page.locator("#dlg-folha[open]")).to_have_count(0)
+
+
+def decodificar_qr(b, svg, nome):
+    import cv2
+    pg = b.new_page(viewport={"width": 700, "height": 700}); pg.set_content(f"<body style='margin:30px;background:#fff'>{svg.replace('width=\"100\" height=\"100\"', 'width=\"440\" height=\"440\"')}</body>")
+    pg.screenshot(path=str(OUT / nome)); pg.close()
+    return cv2.QRCodeDetectorAruco().detectAndDecode(cv2.imread(str(OUT / nome)))[0]
+
+
 def esperar_toast(page, trecho):
     try:
         page.locator("#toast:not([hidden])", has_text=trecho).wait_for(timeout=8000)
@@ -133,14 +146,31 @@ try:
         assinar(page, "#form-novo"); page.fill("#form-novo input[name=pin]", "1111")
         page.screenshot(path=str(OUT / "2_modal_novo.png"))
         page.click("#form-novo button[type=submit]"); esperar_toast(page, "registrado")
-        page.wait_for_timeout(500)
+        # aviso para a portaria imprimir a folha de identificação (QR Code grande, só com os dados da solicitação)
+        expect(page.locator("#dlg-folha[open]")).to_be_visible(timeout=6000)
+        num_folha = page.inner_text("#folha-numero").strip(); assert "folha de identificação" in page.inner_text("#dlg-folha").lower()
+        page.screenshot(path=str(OUT / "2f_aviso_folha.png"))
+        page.click("#folha-imprimir"); expect(page.locator("#print-root.folha .p-folha-qr svg")).to_have_count(1, timeout=6000); page.wait_for_timeout(400)
+        assert page.evaluate("window.__imprimiu") == 1 and page.locator("#dlg-folha[open]").count() == 0
+        assert page.locator("#print-root .p-folha-urg").count() == 1, "judicial: faixa URGENTE na folha"
+        assert page.locator("#print-root .p-etapas").count() == 0, "a folha não traz a tramitação"
+        assert page.locator("#print-root .p-folha-num").inner_text().strip() == num_folha
+        svg_f = page.evaluate("document.querySelector('#print-root .p-folha-qr svg').outerHTML")
+        assert "style=" not in svg_f and "<script" not in svg_f
+        lido = decodificar_qr(b, svg_f, "qr_folha.png"); esperado = page.evaluate("location.origin + location.pathname") + "#p=" + num_folha
+        print("QR da folha:", lido); assert lido == esperado, (lido, esperado)
+        for esq in ("light", "dark"):
+            rc = contraste_na_impressao(page, esq); assert rc["n"] > 8 and not rc["ruins"], (esq, rc)
+        pdf_da_impressao(page, "folha_identificacao.pdf", False)
+        page.evaluate("document.getElementById('print-root').innerHTML=''; window.__imprimiu = 0")
+        page.wait_for_timeout(300)
         assert "<b>" not in page.inner_html("#tbody").replace("&lt;b&gt;", ""), "XSS: HTML não escapado"
         assert "teste-xss" in page.inner_text("#tbody")
         assert "JUDICIAL" in page.inner_text("#tbody") and "URGENTE" in page.inner_text("#tbody")
         page.screenshot(path=str(OUT / "2b_lista_portaria.png"))
         # segundo registro (para filtros) — correspondência comum
         page.click("#btn-novo"); page.fill("textarea[name=descricao]", "Carta A.R. Correios"); page.click("#form-novo .modo[data-modo=digitada]"); page.fill("#form-novo input[name=pin]", "1111")
-        page.click("#form-novo button[type=submit]"); page.wait_for_timeout(700)
+        page.click("#form-novo button[type=submit]"); page.wait_for_timeout(700); fechar_folha(page)
         sair(page)
 
         # 2) ADM
@@ -232,11 +262,11 @@ try:
         # auditoria
         page.click("#btn-aba-auditoria"); page.click("#btn-verificar"); page.locator("#resultado-verificacao:not(:empty)").wait_for()
         print("auditoria:", page.inner_text("#resultado-verificacao")); assert "íntegra" in page.inner_text("#resultado-verificacao")
-        expect(page.locator("#tbody-audit")).to_contain_text("Ficha impressa", timeout=8000)
+        expect(page.locator("#tbody-audit")).to_contain_text("Ficha de tramitação impressa", timeout=8000)
         txt = page.inner_text("#tbody-audit")
-        assert "Livro impresso" in txt and "Ficha impressa" in txt and "Entrou no sistema" in txt and "Descrição corrigida" in txt
+        assert "Livro impresso" in txt and "Ficha de tramitação impressa" in txt and "Entrou no sistema" in txt and "Descrição corrigida" in txt
         assert "{" not in txt and "IMPRESSAO_" not in txt, "a trilha não deve mostrar JSON/códigos crus"
-        assert "2026-0001" in page.inner_text("#tbody-audit tr:has-text('Ficha impressa')"), "ficha impressa deve citar o nº"
+        assert "2026-0001" in page.inner_text("#tbody-audit tr:has-text('Ficha de tramitação impressa')"), "ficha impressa deve citar o nº"
         page.screenshot(path=str(OUT / "6_auditoria.png"))
         # filtros da trilha
         page.select_option("#form-aud select[name=categoria]", "correcao"); page.wait_for_timeout(700)
@@ -262,7 +292,7 @@ try:
         page.click("[data-aba=protocolos]"); assert page.locator("#btn-novo").is_visible()
         page.click("#btn-novo"); page.fill("textarea[name=descricao]", "Ofício interno da Gestão nº 7")
         page.click("#form-novo .modo[data-modo=digitada]"); page.click("#form-novo .estilo[data-estilo=rubrica]"); page.fill("#form-novo input[name=pin]", "5556")
-        page.click("#form-novo button[type=submit]"); esperar_toast(page, "registrado"); page.wait_for_timeout(600)
+        page.click("#form-novo button[type=submit]"); esperar_toast(page, "registrado"); page.wait_for_timeout(600); fechar_folha(page)
         page.click("#tbody tr:has-text('Gestão nº 7')"); page.click("[data-acao=adm]")
         page.locator("#sel-destino option", has_text="Farmácia").wait_for(state="attached")
         page.select_option("#sel-destino", label="Farmácia"); page.click("#form-confirmar .modo[data-modo=digitada]"); page.fill("#form-confirmar input[name=pin]", "5556")
@@ -728,20 +758,21 @@ try:
         page.screenshot(path=str(OUT / "20_avisos_aparelho.png")); page.keyboard.press("Escape")
 
         # =================== v12: QR na ficha, impressão no tema escuro, excluir usuário, link direto do QR ===================
-        import cv2, numpy as np, re as _re
         page.click("[data-aba=protocolos]"); page.wait_for_timeout(400)
         page.evaluate("document.documentElement.setAttribute('data-tema', 'escuro')")
         page.locator("#tbody tr[data-id]").first.click(); page.locator("#dlg-detalhe[open]").wait_for()
         numero_qr = page.inner_text("#detalhe-corpo h2").strip()
         page.click("[data-acao=imprimir]"); page.wait_for_timeout(700)
-        expect(page.locator("#print-root.ficha .p-qr svg")).to_have_count(1)
-        svg = page.evaluate("document.querySelector('#print-root .p-qr svg').outerHTML")
-        assert "style=" not in svg and "<script" not in svg, "o QR não pode usar estilo em linha (CSP)"
-        pg2 = b.new_page(viewport={"width": 700, "height": 700}); pg2.set_content(f"<body style='margin:30px;background:#fff'>{svg.replace('width=\"100\" height=\"100\"', 'width=\"440\" height=\"440\"')}</body>")
-        pg2.screenshot(path=str(OUT / "qr_ficha.png")); pg2.close()
-        lido, _, _ = cv2.QRCodeDetectorAruco().detectAndDecode(cv2.imread(str(OUT / "qr_ficha.png")))
+        expect(page.locator("#print-root.ficha .p-etapas")).to_have_count(1); assert page.locator("#print-root .p-qr, #print-root svg").count() == 0, "a ficha de tramitação não traz QR"
+        assert "FICHA DE TRAMITAÇÃO" in page.inner_text("#print-root .p-cab").upper()
+        # a folha de identificação também sai pelo detalhe (reimpressão)
+        page.evaluate("document.getElementById('print-root').innerHTML=''; window.__imprimiu = 0")
+        page.click("[data-acao=folha]"); expect(page.locator("#print-root.folha .p-folha-qr svg")).to_have_count(1, timeout=6000)
+        lido = decodificar_qr(b, page.evaluate("document.querySelector('#print-root .p-folha-qr svg').outerHTML"), "qr_ficha.png")
         esperado = page.evaluate("location.origin + location.pathname") + "#p=" + numero_qr
         print("QR lido:", lido); assert lido == esperado, (lido, esperado)
+        page.evaluate("document.getElementById('print-root').innerHTML=''")
+        page.click("[data-acao=imprimir]"); page.wait_for_timeout(700)
         # tema escuro na tela + impressão: nada de letra clara sobre papel branco
         r_esc = contraste_na_impressao(page, "dark"); print("contraste ficha (escuro):", r_esc["n"], "textos;", r_esc["ruins"] or "sem problemas")
         assert r_esc["n"] > 10 and not r_esc["ruins"], r_esc
