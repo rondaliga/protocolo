@@ -199,7 +199,7 @@ select public.admin_cadastrar_perfil('x@y.org','Fulano','super_setor','Superinte
   (encerra as sessões e bloqueia o login), **nova senha**, **novo PIN**, desbloquear PIN. Ações sensíveis pedem o **PIN do gestor**.
   Proteções: não é possível desativar/rebaixar a si mesmo nem o último gestor ativo.
 - Quatro abas: **Usuários**; **Sistema** (Identidade visual, Prazos e regras com parâmetros validados e Uso do sistema, com um índice "Ir para"); **Setores e feriados** (os feriados contam no cálculo de horas úteis); e **Backup e retenção**.
-- **Ícone e visual:** o sistema tem ícone próprio (livro com selo de conferido) no cabeçalho, no login, na aba do navegador, no app instalado (`assets/icone.svg`, PNGs de 180/192/512 px) e nas impressões quando não há logotipo. Os ícones da interface são desenhos lineares sem biblioteca externa (`web/icones.js`). Para usar um ícone em qualquer elemento, basta `data-ico="nome"` (ex.: `<button data-ico="salvar">`); conteúdo montado por script também é atendido automaticamente. Nomes disponíveis: ver o dicionário no início de `icones.js`.
+- **Logo e visual:** a logo da Liga Contra o Câncer (`web/assets/logo.png`, fundo transparente) é o padrão do sistema: login, topo, impressões, aba do navegador (`favicon.png`), app instalado (`icone-192.png`, `icone-512.png`, `apple-touch-icon.png`) e e-mail de boas-vindas. Um logotipo enviado em Painel → Sistema → Identidade tem prioridade no site (não nos e-mails). Para trocar a padrão, substitua `logo.png` mantendo o nome.
 - **Tema claro e escuro:** menu *Minha conta → Tema* (Automático segue o sistema operacional, Claro ou Escuro). A escolha fica só no navegador de cada pessoa. Impressões e PDF saem sempre em fundo branco.
 - Tudo é gravado na trilha de auditoria.
 
@@ -278,7 +278,7 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 **Usabilidade**
 - Link "Ir para o conteúdo" (teclado), foco visível em links e respeito a "reduzir movimento".
 - Os filtros de status, alerta e ordem são lembrados por usuário neste navegador (busca e datas, não).
-- Instalável no celular ("Adicionar à tela inicial") por `manifest.webmanifest`. O ícone do atalho é o padrão (`assets/icone.svg`): o logotipo trocado no painel vale para o sistema e as impressões, mas não para o ícone do atalho. Não há modo offline.
+- Instalável no celular ("Adicionar à tela inicial") por `manifest.webmanifest`. O ícone do atalho é a logo padrão da Liga (`assets/icone-192.png` / `icone-512.png`); um logotipo trocado pelo painel não altera o ícone já instalado.
 
 ### Guia rápido por perfil
 | Perfil | O que faz |

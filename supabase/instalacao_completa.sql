@@ -4067,8 +4067,8 @@ declare
   g public.perfis%rowtype := public._exigir_gestor(); u public.perfis%rowtype; v_enc text;
   v_url text := btrim(coalesce(p_url, '')); v_un text := regexp_replace(btrim(coalesce(p_unidade, '')), '\s+', ' ', 'g');
   v_logo text := btrim(coalesce(p_logo_url, ''));
-  v_setor text; v_papel text; v_corpo text; v_html text; v_min int; v_tempo text; v_id bigint; v_senha text;
-  v_em text; v_quando text; v_img text; v_botao text; v_acesso text;
+  v_corpo text; v_html text; v_id bigint; v_senha text;
+  v_em text; v_quando text; v_botao text; v_acesso text;
   c_azul constant text := '#1f4e6e'; c_fonte constant text := 'font-family:Segoe UI,Helvetica,Arial,sans-serif;';
 begin
   perform public._limpar_boas_vindas();
@@ -4085,101 +4085,80 @@ begin
     end if;
   end if;
   if v_url !~ '^https?://[^\s"''<>]+$' or length(v_url) > 200 then v_url := ''; end if;
-  if v_logo !~ '^https://[^\s"''<>]+\.(png|jpe?g|gif)$' or length(v_logo) > 300 then v_logo := ''; end if;
+  if v_logo !~ '^https?://[^\s"''<>]+\.(png|jpe?g|gif)$' or length(v_logo) > 300 then v_logo := ''; end if;
   if length(v_un) > 120 or v_un ~ '[\r\n]' then v_un := ''; end if;
 
-  v_papel := case u.papel when 'portaria' then 'Portaria' when 'adm' then 'ADM (Administração)'
-                          when 'super_setor' then 'Responsável de setor' else 'Gestor' end;
-  select nome into v_setor from public.setores where id = u.setor_id;
-  if v_setor is not null then v_papel := v_papel || ' — ' || v_setor; end if;
-  v_min := public._param_min('sessao_inatividade_min', 360);
-  v_tempo := case when v_min % 60 = 0 then (v_min / 60) || case when v_min = 60 then ' hora' else ' horas' end
-             else v_min || ' minutos' end;
   v_senha := case when coalesce(u.deve_trocar_senha, false) then p_senha else 'a mesma que você já utiliza' end;
   v_quando := to_char(now() at time zone public._fuso(), 'DD/MM/YYYY "às" HH24:MI');
 
-  -- ---------- versão em texto simples (reserva) ----------
+  -- ---------- versão em texto simples (reserva; sem recuos, para copiar só o necessário) ----------
   v_corpo := 'Prezado(a) ' || u.nome || ',' || E'\n\n'
-    || 'Seu acesso ao Livro de Protocolo Eletrônico' || case when v_un <> '' then ' — ' || v_un else '' end || ' foi criado.' || E'\n\n'
-    || 'DADOS DE ACESSO' || E'\n'
-    || '  Endereço:         ' || case when v_url <> '' then v_url else '(solicite ao gestor)' end || E'\n'
-    || '  Usuário:          ' || u.email || E'\n'
-    || '  Senha provisória: ' || v_senha || E'\n'
-    || '  PIN provisório:   ' || p_pin || E'\n'
-    || '  Perfil:           ' || v_papel || E'\n\n'
+    || 'Seus dados de acesso:' || E'\n'
+    || 'Usuário: ' || u.email || E'\n'
+    || 'Senha provisória: ' || v_senha || E'\n'
+    || 'PIN provisório: ' || p_pin || E'\n'
+    || case when v_url <> '' then 'Acesse: ' || v_url || E'\n' else '' end || E'\n'
     || 'PRIMEIRO ACESSO' || E'\n'
-    || '  1. Entre com o e-mail e a senha provisória.' || E'\n'
-    || '  2. Crie uma nova senha (10 a 72 caracteres, com letras e números) e um novo PIN (4 a 6 dígitos).' || E'\n'
-    || '  3. Se solicitado, cadastre o aplicativo autenticador no celular.' || E'\n\n'
-    || 'SEGURANÇA' || E'\n'
-    || '  - O acesso é pessoal e intransferível: não compartilhe a senha nem o PIN.' || E'\n'
-    || '  - Após o primeiro acesso, exclua esta mensagem.' || E'\n'
-    || '  - A sessão é encerrada após ' || v_tempo || ' sem uso. As ações ficam registradas em auditoria (LGPD).' || E'\n\n'
-    || 'Atenciosamente,' || E'\n' || g.nome || E'\n' || 'Gestão do Livro de Protocolo' || case when v_un <> '' then E'\n' || v_un else '' end || E'\n\n'
-    || 'Mensagem automática. Não responda a este e-mail. Em caso de dúvida, ou se não reconhece esta mensagem, procure o gestor do sistema.';
+    || 'Entre com o e-mail e a senha provisória e, quando solicitado, defina uma nova senha (10 a 72 caracteres, com letras e números) e um novo PIN (4 a 6 dígitos).' || E'\n\n'
+    || 'O acesso é pessoal e intransferível. Exclua esta mensagem após o primeiro acesso.' || E'\n\n'
+    || 'Atenciosamente,' || E'\n' || g.nome || E'\n' || 'Gestão do Livro de Protocolo' || case when v_un <> '' then ' · ' || v_un else '' end || E'\n\n'
+    || 'Mensagem automática. Não responda a este e-mail.';
 
-  -- ---------- versão visual (HTML, só com estilos em linha e tabelas: compatível com Outlook/Gmail) ----------
-  v_img := case when v_logo <> ''
-    then '<img src="' || public._html_esc(v_logo) || '" alt="Liga Contra o Câncer" height="64" style="display:block;margin:0 auto;border:0;height:64px;width:auto;max-width:260px;">'
-    else '<div style="' || c_fonte || 'font-size:15px;letter-spacing:2px;font-weight:700;color:' || c_azul || ';text-align:center;">LIGA CONTRA O CÂNCER</div>' end;
+  -- ---------- versão visual (HTML: tabelas e estilos em linha, compatível com Outlook/Gmail) ----------
   v_botao := case when v_url <> ''
-    then '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:26px auto 4px;"><tr>'
+    then '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 6px;"><tr>'
       || '<td align="center" bgcolor="' || c_azul || '" style="border-radius:6px;"><a href="' || public._html_esc(v_url)
-      || '" style="display:inline-block;padding:13px 34px;' || c_fonte || 'font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">Acessar o sistema</a></td></tr></table>'
+      || '" style="display:inline-block;padding:14px 40px;' || c_fonte || 'font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;letter-spacing:.3px;">Acessar o sistema</a></td></tr></table>'
     else '' end;
-  v_acesso := '<tr><td style="padding:9px 0;border-bottom:1px solid #dbe5ee;' || c_fonte || 'font-size:13px;color:#5a6b7b;width:38%;">%L</td>'
-           || '<td style="padding:9px 0;border-bottom:1px solid #dbe5ee;' || c_fonte || 'font-size:15px;color:#1b2733;font-weight:600;word-break:break-all;">%V</td></tr>';
-  v_em := '';
-  v_em := v_em || replace(replace(v_acesso, '%L', 'Usuário (e-mail)'), '%V', public._html_esc(u.email));
+  -- cada dado fica sozinho em sua célula, sem espaços em volta: seleciona-se (duplo clique) e copia-se só o valor
+  v_acesso := '<tr><td style="padding:12px 0;border-bottom:1px solid #dbe5ee;' || c_fonte || 'font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#6b7c8c;width:36%;">%L</td>'
+           || '<td style="padding:12px 0;border-bottom:1px solid #dbe5ee;' || c_fonte || 'font-size:16px;color:#1b2733;font-weight:600;word-break:break-all;"><span style="user-select:all;-webkit-user-select:all;">%V</span></td></tr>';
+  v_em := replace(replace(v_acesso, '%L', 'Usuário'), '%V', public._html_esc(u.email));
   v_em := v_em || replace(replace(v_acesso, '%L', 'Senha provisória'), '%V',
           case when coalesce(u.deve_trocar_senha, false)
-               then '<span style="font-family:Consolas,Menlo,monospace;font-size:16px;letter-spacing:.5px;">' || public._html_esc(p_senha) || '</span>'
+               then '<span style="font-family:Consolas,Menlo,monospace;font-size:17px;letter-spacing:.5px;">' || public._html_esc(p_senha) || '</span>'
                else public._html_esc(v_senha) end);
   v_em := v_em || replace(replace(v_acesso, '%L', 'PIN provisório'), '%V',
-          '<span style="font-family:Consolas,Menlo,monospace;font-size:16px;letter-spacing:2px;">' || public._html_esc(p_pin) || '</span>');
-  v_em := v_em || replace(replace(v_acesso, '%L', 'Perfil'), '%V', public._html_esc(v_papel));
+          '<span style="font-family:Consolas,Menlo,monospace;font-size:17px;letter-spacing:3px;">' || public._html_esc(p_pin) || '</span>');
 
   v_html := '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-    || '<meta name="color-scheme" content="light"><title>Dados de acesso ao sistema</title></head>'
+    || '<meta name="color-scheme" content="light"><title>Dados de acesso</title></head>'
     || '<body style="margin:0;padding:0;background:#eef2f6;">'
     || '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Seus dados de acesso ao Livro de Protocolo Eletrônico.</div>'
     || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f6"><tr><td align="center" style="padding:28px 12px;">'
-    || '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #d3dce5;">'
-    -- faixa branca com a logo
-    || '<tr><td align="center" style="padding:26px 24px 20px;background:#ffffff;">' || v_img || '</td></tr>'
-    -- faixa azul com o título
-    || '<tr><td align="center" bgcolor="' || c_azul || '" style="padding:20px 24px;background:' || c_azul || ';">'
-    || '<div style="' || c_fonte || 'font-size:21px;font-weight:600;color:#ffffff;letter-spacing:.3px;">Livro de Protocolo Eletrônico</div>'
-    || case when v_un <> '' then '<div style="' || c_fonte || 'font-size:13px;color:#cfe0ee;margin-top:5px;letter-spacing:1px;">' || public._html_esc(upper(v_un)) || '</div>' else '' end
-    || '</td></tr>'
-    -- corpo
-    || '<tr><td style="padding:32px 38px 8px;' || c_fonte || 'color:#1b2733;font-size:15px;line-height:1.65;">'
-    || '<p style="margin:0 0 14px;">Prezado(a) <strong>' || public._html_esc(u.nome) || '</strong>,</p>'
-    || '<p style="margin:0 0 22px;">Seu acesso ao sistema foi criado. Utilize os dados abaixo para entrar pela primeira vez.</p>'
-    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f8fb" style="background:#f4f8fb;border:1px solid #d3dce5;border-left:4px solid ' || c_azul || ';border-radius:4px;">'
-    || '<tr><td style="padding:8px 20px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' || v_em || '</table></td></tr></table>'
+    || '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #d3dce5;">'
+    -- cabeçalho azul: logo da Liga à esquerda, título à direita
+    || '<tr><td bgcolor="' || c_azul || '" style="padding:24px 30px;background:' || c_azul || ';"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="left"><tr>'
+    || case when v_logo <> '' then '<td valign="middle" style="padding-right:18px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" valign="middle" width="64" height="64" bgcolor="#ffffff" style="width:64px;height:64px;background:#ffffff;border-radius:14px;">'
+         || '<img src="' || public._html_esc(v_logo) || '" alt="Liga Contra o Câncer" width="48" height="48" style="display:block;margin:0 auto;border:0;width:48px;height:48px;"></td></tr></table></td>' else '' end
+    || '<td valign="middle" align="left">'
+    || '<div style="' || c_fonte || 'font-size:21px;font-weight:600;color:#ffffff;letter-spacing:.3px;line-height:1.25;">Livro de Protocolo Eletrônico</div>'
+    || case when v_un <> '' then '<div style="' || c_fonte || 'font-size:13px;color:#cfe0ee;margin-top:4px;letter-spacing:1px;">' || public._html_esc(upper(v_un)) || '</div>' else '' end
+    || '</td></tr></table></td></tr>'
+    -- saudação e dados
+    || '<tr><td style="padding:34px 40px 6px;' || c_fonte || 'color:#1b2733;font-size:15px;line-height:1.6;">'
+    || '<p style="margin:0 0 6px;font-size:17px;">Prezado(a) <strong>' || public._html_esc(u.nome) || '</strong>,</p>'
+    || '<p style="margin:0 0 22px;color:#44576a;">Seus dados de acesso:</p>'
+    || '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f5f8fb" style="background:#f5f8fb;border:1px solid #d3dce5;border-top:4px solid ' || c_azul || ';border-radius:6px;">'
+    || '<tr><td style="padding:4px 22px 6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' || v_em || '</table></td></tr></table>'
     || v_botao
     || '</td></tr>'
-    -- primeiro acesso
-    || '<tr><td style="padding:22px 38px 4px;' || c_fonte || 'color:#1b2733;font-size:14px;line-height:1.6;">'
-    || '<div style="font-size:12px;font-weight:700;letter-spacing:1.4px;color:' || c_azul || ';margin-bottom:8px;">PRIMEIRO ACESSO</div>'
-    || '<ol style="margin:0;padding-left:20px;"><li style="margin-bottom:4px;">Entre com o e-mail e a senha provisória.</li>'
-    || '<li style="margin-bottom:4px;">Crie uma nova senha (10 a 72 caracteres, com letras e números) e um novo PIN (4 a 6 dígitos). O PIN é a sua assinatura eletrônica.</li>'
-    || '<li>Se o sistema solicitar, cadastre o aplicativo autenticador no celular.</li></ol></td></tr>'
-    -- segurança
-    || '<tr><td style="padding:22px 38px 6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fff7e0" style="background:#fff7e0;border:1px solid #f0dca3;border-radius:4px;">'
-    || '<tr><td style="padding:14px 18px;' || c_fonte || 'font-size:13px;line-height:1.6;color:#5c4300;">'
-    || '<strong>Segurança.</strong> O acesso é pessoal e intransferível: não compartilhe a senha nem o PIN e exclua esta mensagem após o primeiro acesso. '
-    || 'A sessão é encerrada após ' || v_tempo || ' sem uso e todas as ações ficam registradas em auditoria, conforme a LGPD.'
-    || '</td></tr></table></td></tr>'
+    -- primeiro acesso (curto)
+    || '<tr><td style="padding:24px 40px 4px;' || c_fonte || 'color:#1b2733;font-size:14px;line-height:1.65;">'
+    || '<div style="font-size:12px;font-weight:700;letter-spacing:1.4px;color:' || c_azul || ';margin-bottom:6px;">PRIMEIRO ACESSO</div>'
+    || 'Entre com o e-mail e a senha provisória e, quando solicitado, defina uma <strong>nova senha</strong> (10 a 72 caracteres, com letras e números) e um <strong>novo PIN</strong> (4 a 6 dígitos).'
+    || '</td></tr>'
+    -- segurança (uma linha)
+    || '<tr><td style="padding:18px 40px 4px;' || c_fonte || 'font-size:13px;line-height:1.55;color:#7a5a00;">'
+    || '<span style="display:inline-block;background:#fff7e0;border-left:3px solid #e0b43c;padding:10px 14px;border-radius:3px;">O acesso é pessoal e intransferível. Exclua esta mensagem após o primeiro acesso.</span>'
+    || '</td></tr>'
     -- assinatura
-    || '<tr><td style="padding:24px 38px 30px;' || c_fonte || 'font-size:14px;line-height:1.6;color:#1b2733;">'
+    || '<tr><td style="padding:26px 40px 32px;' || c_fonte || 'font-size:14px;line-height:1.6;color:#1b2733;">'
     || 'Atenciosamente,<br><strong>' || public._html_esc(g.nome) || '</strong><br>'
-    || '<span style="color:#5a6b7b;">Gestão do Livro de Protocolo' || case when v_un <> '' then ' · ' || public._html_esc(v_un) else '' end || '</span></td></tr>'
+    || '<span style="color:#6b7c8c;">Gestão do Livro de Protocolo' || case when v_un <> '' then ' · ' || public._html_esc(v_un) else '' end || '</span></td></tr>'
     -- rodapé
-    || '<tr><td bgcolor="#f4f7fa" style="padding:16px 38px;background:#f4f7fa;border-top:1px solid #e1e8ef;' || c_fonte || 'font-size:11.5px;line-height:1.55;color:#7a8896;text-align:center;">'
-    || 'Mensagem automática, enviada em ' || v_quando || ' por solicitação do gestor. Não responda a este e-mail.<br>'
-    || 'Se você não reconhece esta mensagem, procure o gestor responsável pelo sistema.'
+    || '<tr><td bgcolor="#f4f7fa" style="padding:14px 40px;background:#f4f7fa;border-top:1px solid #e1e8ef;' || c_fonte || 'font-size:11.5px;color:#7a8896;text-align:center;">'
+    || 'Mensagem automática, enviada em ' || v_quando || '. Não responda a este e-mail.'
     || '</td></tr></table></td></tr></table></body></html>';
 
   insert into public.fila_email (chave, evento, destinatarios, assunto, corpo, corpo_html)

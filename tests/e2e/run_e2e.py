@@ -317,10 +317,21 @@ try:
         page.wait_for_timeout(600); assert "PIN" in page.inner_text("#form-usuario .erro")                   # PIN do gestor errado
         page.fill("#form-usuario input[name=pin]", "5556"); page.click("#form-usuario button[type=submit]")
         page.locator("#dlg-credencial[open]").wait_for(); cred = page.inner_text("#cred-dados")
+        # cada dado tem o seu botão Copiar e copia exatamente o valor (sem espaços nem recuos)
+        assert page.locator("#cred-dados .cred-item").count() == 3 and page.locator("#cred-dados [data-copia]").count() == 3 and "http" not in page.inner_text("#cred-dados")
+        page.evaluate("window.__copiado = []; navigator.clipboard.writeText = (t) => { window.__copiado.push(t); return Promise.resolve(); }; 0")
+        for i in range(3): page.locator("#cred-dados [data-copia]").nth(i).click(); page.wait_for_timeout(120)
+        copiado = page.evaluate("window.__copiado"); print("copiado:", copiado[0])
+        assert len(copiado) == 3 and all(c == c.strip() and "\n" not in c and c for c in copiado), copiado
+        assert copiado[0] == "novo.adm@teste.local" and len(copiado[1]) >= 10 and copiado[2].isdigit()
+        assert "Copiar tudo" not in page.inner_text("#dlg-credencial") and page.evaluate("getComputedStyle(document.querySelector('.cred-rot')).userSelect") == "none", "o rótulo não deve ser copiado junto"
+        assert page.evaluate("[...document.querySelectorAll('.cred-val')].every((e) => e.textContent === e.textContent.trim())")
+        expect(page.locator("#cred-dados .copiado")).to_have_count(0, timeout=4000)
         assert senha_prov in cred and pin_prov in cred and "novo.adm@teste.local" in cred, cred
         expect(page.locator("#cred-email-msg")).to_contain_text("novo.adm@teste.local", timeout=8000)
         corpo_bv = psql("select corpo from public.fila_email where evento='BOAS_VINDAS' and destinatarios=array['novo.adm@teste.local'] order by id desc limit 1")
         assert senha_prov in corpo_bv and pin_prov in corpo_bv and "Prezado(a)" in corpo_bv and "PRIMEIRO ACESSO" in corpo_bv, corpo_bv
+        assert psql("select (corpo_html like '%/assets/logo.png\"%' and corpo_html like '%Liga Contra o Câncer%') from public.fila_email where evento='BOAS_VINDAS' and destinatarios=array['novo.adm@teste.local'] order by id desc limit 1") == "t", "e-mail com a logo da Liga"
         page.screenshot(path=str(OUT / "8b_credenciais.png")); page.click("#dlg-credencial [data-fechar]"); page.wait_for_timeout(300)
         assert page.locator("#tbody-usr tr").count() == 6
         assert "Primeiro acesso pendente" in page.inner_text("#tbody-usr tr:has-text('Rita Nova')")
@@ -548,7 +559,7 @@ try:
         assert "vencem em até 2 dias" in page.inner_text("#k-crit"), page.inner_text("#k-crit")
         assert "Vence em até 2 dias" in page.inner_text("select[name=alerta]")
         m = page.request.get(URL + "manifest.webmanifest"); assert m.ok and m.json()["short_name"] == "Protocolo"
-        assert page.locator("link[rel=manifest]").count() == 1 and page.request.get(URL + "assets/icone.svg").ok
+        assert page.locator("link[rel=manifest]").count() == 1 and page.request.get(URL + "assets/logo.png").ok and page.request.get(URL + "assets/favicon.png").ok
         page.focus("a.pular"); assert page.evaluate("document.activeElement.className") == "pular" and page.locator("a.pular").bounding_box()["y"] >= 0, "link 'Ir para o conteúdo' deve ficar visível ao receber foco"
         assert page.get_attribute("a.pular", "href") == "#conteudo" and page.locator("main#conteudo").count() == 1
         page.select_option("select[name=status]", "concluido"); page.wait_for_timeout(500)

@@ -10,7 +10,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Livro de Protocolo · CECAN – LNRCC</title>
   <meta name="theme-color" content="#1f4e6e">
-  <link rel="icon" href="assets/icone.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
@@ -32,7 +32,7 @@
 <section id="view-login" class="centro" hidden>
   <button class="btn mini sec tema-login btn-tema" type="button" data-tema-btn>Tema: Automático</button>
   <form id="form-login" class="cartao-login" autocomplete="on">
-    <div class="marca marca-grande"><img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span></div>
+    <div class="marca marca-grande"><img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/logo.png" alt=""></span></div>
     <h1>Livro de Protocolo</h1>
     <p class="sub">Recebimento e tramitação de demandas judiciais e correspondências</p>
     <p class="unidade" data-unidade></p>
@@ -53,7 +53,7 @@
   <a class="pular" href="#conteudo">Ir para o conteúdo</a>
   <header class="topo">
     <div class="marca">
-      <img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span>
+      <img class="logo" alt="" hidden><span class="cruz" aria-hidden="true"><img src="assets/logo.png" alt=""></span>
       <div class="marca-txt"><strong>Livro de Protocolo</strong><span data-unidade></span></div>
     </div>
     <div class="usuario">
@@ -293,7 +293,7 @@
           <h2 data-ico="palette" id="sis-identidade-t" tabindex="-1">Identidade visual</h2>
         <form id="form-logo" class="cartao-cfg sem-titulo" autocomplete="off">
                     <div class="logo-cfg">
-            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true"><img src="assets/icone.svg" alt=""></span></div>
+            <div class="logo-previa" aria-live="polite"><img id="logo-previa" alt="Logotipo atual" hidden><span id="logo-padrao" class="cruz" aria-hidden="true"><img src="assets/logo.png" alt=""></span></div>
             <div class="logo-controles">
               <p class="dica">O logotipo é usado no cabeçalho, na tela de login, na aba do navegador e em todas as impressões (ficha, livro e trilha).
                 Aceita PNG, JPEG ou WebP; a imagem é reduzida automaticamente. Prefira fundo transparente ou branco.</p>
@@ -731,16 +731,17 @@
 </dialog>
 
 <!-- ============ MODAL: CREDENCIAIS GERADAS (exibidas uma única vez) ============ -->
-<dialog id="dlg-credencial">
+<dialog id="dlg-credencial" class="dlg-cred">
   <div class="modal-corpo">
-    <h2 data-ico="chave">Entregue os dados de acesso</h2>
-    <p class="dica">Estas informações <strong>não serão exibidas novamente</strong>. Entregue-as pessoalmente ou por um canal seguro.
-      No primeiro acesso o usuário será obrigado a trocar a senha e o PIN.</p>
+    <div class="cred-topo">
+      <span class="cred-logo"><img src="assets/logo.png" alt=""></span>
+      <div><div class="cred-titulo" id="cred-titulo">Acesso criado</div><div class="cred-quem" id="cred-quem"></div></div>
+    </div>
     <dl class="credencial" id="cred-dados"></dl>
-    <p class="dica" id="cred-email-msg" role="status" hidden></p>
+    <p class="cred-aviso">Exibido <strong>uma única vez</strong>. Entregue ao usuário por um canal seguro.</p>
+    <p class="cred-email" id="cred-email-msg" role="status" hidden></p>
     <div class="modal-acoes">
-      <button data-ico="copiar" type="button" class="btn sec" id="cred-copiar">Copiar</button>
-      <button data-ico="ok" type="button" class="btn primario" data-fechar>Já anotei / entreguei</button>
+      <button data-ico="ok" type="button" class="btn primario" data-fechar>Concluir</button>
     </div>
   </div>
 </dialog>

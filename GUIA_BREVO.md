@@ -153,10 +153,4 @@ Serve como reserva: se o envio imediato falhar, a rotina tenta enviar a cada ~15
 
 ## Logo da Liga no e-mail de boas-vindas
 
-O e-mail de acesso dos novos usuários é visual (HTML). Para a **logo da Liga Contra o Câncer** aparecer no topo:
-
-1. No GitHub, abra a pasta `web/assets` do repositório → **Add file** → **Upload files**.
-2. Envie a logo com o nome exato **`logo.png`** (fundo transparente, cerca de 400 px de largura) e confirme (**Commit changes**).
-3. Aguarde o site ser publicado de novo (1 a 2 minutos).
-
-Sem o arquivo, o e-mail mostra o texto "LIGA CONTRA O CÂNCER" no lugar da logo. A logo enviada pelo painel (Sistema → Identidade) aparece no site e nas impressões, mas **não** nos e-mails, pois os programas de e-mail só carregam imagens de um endereço público.
+A logo da Liga Contra o Câncer já acompanha o projeto (`web/assets/logo.png`) e aparece no topo do e-mail, ao lado de "Livro de Protocolo Eletrônico". Ela é carregada do endereço público do seu site (`.../assets/logo.png`), então o site precisa estar publicado. Para trocar a logo, substitua esse arquivo mantendo o nome.

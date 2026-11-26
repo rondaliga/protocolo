@@ -331,10 +331,20 @@
     }
     const ajustarSetor = () => { const f = $('#form-usuario'); $('#lbl-usr-setor').hidden = f.papel.value !== 'super_setor'; };
 
-    function mostrarCredenciais(linhas) {
-      $('#cred-dados').innerHTML = linhas.map(([k, v]) => `<dt>${esc(k)}</dt><dd><code>${esc(v)}</code></dd>`).join('');
-      $('#cred-copiar').dataset.texto = linhas.map(([k, v]) => `${k}: ${v}`).join('\n');
+    function mostrarCredenciais(linhas, nome, titulo) {
+      // um cartão por dado; o botão Copiar copia exatamente o valor (sem espaços, recuos nem rótulo)
+      $('#cred-titulo').textContent = titulo || 'Dados de acesso';
+      $('#cred-quem').textContent = nome || '';
+      $('#cred-dados').innerHTML = linhas.map(([k, v, copiavel]) => {
+        const val = String(v).trim();
+        return `<div class="cred-item"><div class="cred-info"><span class="cred-rot">${esc(k)}</span><span class="cred-val${copiavel === false ? ' cred-texto' : ''}">${esc(val)}</span></div>${copiavel === false ? '' : `<button type="button" class="btn mini sec cred-cp" data-ico="copiar" data-copia="${esc(val)}" aria-label="Copiar: ${esc(k)}">Copiar</button>`}</div>`;
+      }).join('');
       $('#dlg-credencial').showModal();
+    }
+    async function copiarTexto(texto) {
+      try { await navigator.clipboard.writeText(texto); return true; } catch { /* alternativa abaixo */ }
+      try { const t = document.createElement('textarea'); t.value = texto; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+        document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); return ok; } catch { return false; }
     }
 
     function abrirReset(u, tipo) {
@@ -751,15 +761,15 @@
         enviar(form, () => rpc('painel_criar_usuario', { p_email: email, p_nome: form.nome.value, p_papel: form.papel.value, p_setor_id: setor,
           p_senha: senha || null, p_pin: pin, p_pin_gestor: form.pin.value }), async (r) => {
           $('#dlg-usuario').close(); await carregarUsuarios();
-          const linhas = [['Endereço', LP.enderecoSistema()], ['Usuário de acesso (e-mail)', email]];
-          linhas.push(r.conta_nova ? ['Senha provisória', senha] : ['Senha', 'a mesma que o usuário já tinha no Supabase']);
+          const linhas = [['Usuário', email]];
+          linhas.push(r.conta_nova ? ['Senha provisória', senha] : ['Senha', 'a mesma que o usuário já utiliza', false]);
           linhas.push(['PIN provisório', pin]);
-          mostrarCredenciais(linhas);
+          mostrarCredenciais(linhas, nome, 'Acesso criado');
           toast(`Usuário ${nome} criado.`);
           // e-mail formal com os dados de acesso (o texto é apagado do banco depois do envio)
           const msg = $('#cred-email-msg'); msg.textContent = 'Enviando os dados de acesso por e-mail…'; msg.hidden = false;
           try {
-            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade(), p_logo_url: LP.estado().logoSrc === 'assets/logo.png' ? new URL('assets/logo.png', LP.enderecoSistema()).href : null });
+            const env = await rpc('painel_enviar_acesso', { p_user_id: r.user_id, p_senha: r.conta_nova ? senha : null, p_pin: pin, p_url: LP.enderecoSistema(), p_unidade: LP.unidade(), p_logo_url: new URL('assets/logo.png', LP.enderecoSistema()).href });
             msg.textContent = env.imediato ? `Os dados de acesso foram enviados para ${env.email}.` : `E-mail com os dados de acesso na fila para ${env.email}: sem o Brevo ativo, sai na próxima rodada do GitHub Actions.`;
           } catch (e) { msg.textContent = `Não foi possível enviar o e-mail (${e.message}). Entregue os dados acima pessoalmente.`; }
         });
@@ -773,7 +783,7 @@
           ? rpc('painel_redefinir_senha', { p_user_id: u.user_id, p_senha: valor, p_pin_gestor: form.pin.value })
           : rpc('painel_redefinir_pin', { p_user_id: u.user_id, p_pin: valor, p_pin_gestor: form.pin.value })), async () => {
           $('#dlg-reset').close(); await carregarUsuarios();
-          mostrarCredenciais([['Usuário', `${u.nome} (${u.email})`], [tipo === 'senha' ? 'Nova senha provisória' : 'Novo PIN provisório', valor]]);
+          mostrarCredenciais([['Usuário', u.email], [tipo === 'senha' ? 'Nova senha provisória' : 'Novo PIN provisório', valor]], u.nome, tipo === 'senha' ? 'Nova senha provisória' : 'Novo PIN provisório');
         });
       });
       $('#form-ativo').addEventListener('submit', (ev) => {
@@ -791,10 +801,13 @@
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),
           async () => { $('#dlg-ativo').close(); toast(ativar ? 'Usuário reativado.' : 'Usuário desativado.'); await carregarUsuarios(); });
       });
-      $('#cred-copiar').addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText($('#cred-copiar').dataset.texto || ''); toast('Dados copiados.'); } catch { toast('Não foi possível copiar. Selecione e copie manualmente.', true); }
+      $('#cred-dados').addEventListener('click', async (ev) => {
+        const b = ev.target.closest('[data-copia]'); if (!b) return;
+        const no = [...b.childNodes].reverse().find((n) => n.nodeType === 3); const antes = no ? no.textContent : '';   // só o texto; o ícone permanece
+        if (await copiarTexto(b.dataset.copia)) { if (no) no.textContent = 'Copiado!'; b.classList.add('copiado'); setTimeout(() => { if (no) no.textContent = antes; b.classList.remove('copiado'); }, 1600); }
+        else toast('Não foi possível copiar. Selecione o texto e copie manualmente.', true);
       });
-      $('#dlg-credencial').addEventListener('close', () => { $('#cred-email-msg').hidden = true; $('#cred-dados').innerHTML = ''; $('#cred-copiar').dataset.texto = ''; });
+      $('#dlg-credencial').addEventListener('close', () => { $('#cred-email-msg').hidden = true; $('#cred-dados').innerHTML = ''; });
 
       // setores
       $('#set-novo').addEventListener('click', () => abrirSetor(null));

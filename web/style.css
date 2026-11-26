@@ -732,3 +732,22 @@ table td.d, table td.detalhes { overflow-wrap: anywhere; }
   #print-root .p-ficha-tab td { overflow-wrap: anywhere; word-break: break-word; }
 }
 .aviso-folha { background: color-mix(in srgb, var(--ok, #2e7d32) 14%, transparent); border-left: 4px solid var(--ok, #2e7d32); padding: .7rem .9rem; border-radius: 6px; margin: .8rem 0; }
+
+/* ---- dados de acesso do novo usuário: cabeçalho institucional + um cartão por dado, com botão Copiar próprio ---- */
+.dlg-cred { width: min(94vw, 30rem); }
+.cred-topo { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem; margin: 0 0 1.1rem; border-radius: 12px; color: #fff;
+  background: linear-gradient(135deg, #1f4e6e 0%, #2d6a91 100%); }
+.cred-logo { flex: none; width: 56px; height: 56px; display: grid; place-items: center; background: #fff; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.cred-logo img { width: 42px; height: 42px; display: block; }
+.cred-titulo { font-size: 1.2rem; font-weight: 700; letter-spacing: .01em; line-height: 1.2; }
+.cred-quem { font-size: .95rem; opacity: .9; margin-top: .15rem; overflow-wrap: anywhere; }
+.credencial { display: grid; gap: .6rem; grid-template-columns: 1fr; padding: 0; background: none; border: 0; margin: 0 0 .8rem; }
+.cred-item { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .7rem .8rem .7rem 1rem; border: 1px solid var(--borda); border-radius: 10px; background: var(--fundo); }
+.cred-info { display: grid; gap: .2rem; min-width: 0; }
+.cred-rot { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); user-select: none; -webkit-user-select: none; }
+.cred-val { font: 600 1.12rem/1.35 Consolas, Menlo, 'Courier New', monospace; color: var(--texto); user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
+.cred-val.cred-texto { font: 500 .98rem/1.35 inherit; font-family: inherit; user-select: text; -webkit-user-select: text; color: var(--suave); }
+.cred-cp { flex: none; white-space: nowrap; }
+.cred-cp.copiado { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.cred-aviso { margin: 0 0 .6rem; font-size: .88rem; color: var(--suave); }
+.cred-email { margin: 0 0 .8rem; padding: .55rem .8rem; border-radius: 8px; font-size: .88rem; line-height: 1.4; background: var(--ok-bg); color: var(--ok); }

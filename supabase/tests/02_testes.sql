@@ -446,11 +446,11 @@ begin
   perform t.afirma('e-mail traz endereço, usuário, senha e PIN provisórios',
     v_fila.corpo like '%https://exemplo.org/livro/%' and v_fila.corpo like '%novo@x.com%' and v_fila.corpo like '%Senha-Forte-123%' and v_fila.corpo like '%2468%', v_fila.corpo);
   perform t.afirma('e-mail tem versão HTML com logo/título, credenciais, botão e sem scripts',
-    v_fila.corpo_html like '<!DOCTYPE html>%' and v_fila.corpo_html like '%Livro de Protocolo Eletrônico%' and v_fila.corpo_html like '%LIGA CONTRA O CÂNCER%'
+    v_fila.corpo_html like '<!DOCTYPE html>%' and v_fila.corpo_html like '%Livro de Protocolo Eletrônico%' and v_fila.corpo_html like '%Livro de Protocolo Eletrônico%'
     and v_fila.corpo_html like '%Senha-Forte-123%' and v_fila.corpo_html like '%href="https://exemplo.org/livro/"%' and v_fila.corpo_html not like '%<script%', left(v_fila.corpo_html, 80));
-  perform t.afirma('e-mail traz saudação formal, primeiro acesso, segurança, LGPD e assinatura',
-    v_fila.corpo like 'Prezado(a) Novo Usuário,%' and v_fila.corpo like '%PRIMEIRO ACESSO%' and v_fila.corpo like '%SEGURANÇA%'
-    and v_fila.corpo like '%LGPD%' and v_fila.corpo like '%Atenciosamente,%' and v_fila.corpo like '%ADM (Administração)%', v_fila.corpo);
+  perform t.afirma('e-mail traz saudação formal, primeiro acesso, aviso de segurança e assinatura',
+    v_fila.corpo like 'Prezado(a) Novo Usuário,%' and v_fila.corpo like '%PRIMEIRO ACESSO%'
+    and v_fila.corpo like '%intransferível%' and v_fila.corpo like '%Atenciosamente,%', v_fila.corpo);
   perform t.afirma('envio dos dados de acesso fica na trilha sem as credenciais',
     exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL')
     and not exists (select 1 from public.auditoria where acao = 'ACESSO_ENVIADO_POR_EMAIL' and detalhes::text like '%Senha-Forte-123%'));

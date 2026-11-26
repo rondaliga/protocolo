@@ -753,7 +753,7 @@
     const ok = typeof src === 'string' && (LOGO_OK.test(src) || src === 'assets/logo.png');
     estado.logo = ok; estado.logoSrc = ok ? src : null;
     $$('img.logo').forEach((i) => { if (ok) { i.src = src; i.hidden = false; } else { i.hidden = true; i.removeAttribute('src'); } });
-    const fav = $('link[rel=icon]'); if (fav) { fav.href = ok ? src : 'assets/icone.svg'; fav.type = ok ? '' : 'image/svg+xml'; }
+    const fav = $('link[rel=icon]'); if (fav) { fav.href = ok ? src : 'assets/favicon.png'; fav.type = ok && src.startsWith('data:') ? '' : 'image/png'; }
   }
   const LOGO_CACHE = 'protocolo.logo';
   async function carregarIdentidade() {
@@ -771,7 +771,7 @@
 
   // ------------------------------------------------------------------ IMPRESSÃO (livro e ficha)
   function cabecalhoImpressao(subtitulo) {
-    const marca = estado.logoSrc ? `<img src="${estado.logoSrc}" alt="">` : '<img src="assets/icone.svg" alt="">';
+    const marca = estado.logoSrc ? `<img src="${estado.logoSrc}" alt="">` : '<img src="assets/logo.png" alt="">';
     return `<div class="p-cab"><div>${marca}</div>
       <div class="p-tit"><h1>LIVRO DE PROTOCOLO</h1>
         <div class="s">RECEBIMENTO E TRAMITAÇÃO DE DEMANDAS JUDICIAIS E CORRESPONDÊNCIAS</div>

@@ -1,2 +1,4 @@
-Coloque aqui o logotipo da instituição como **logo.png** (fundo transparente, ~400 px de largura).
-Ele aparece automaticamente no login, no topo e nas impressões. Sem o arquivo, o sistema usa o ícone padrão (livro com selo de conferido), que também é o ícone da aba do navegador e do app instalado.
+O logotipo padrão da Liga Contra o Câncer é o arquivo **logo.png** (fundo transparente, 400 px).
+Ele aparece no login, no topo, nas impressões, na aba do navegador e no e-mail de boas-vindas.
+Para trocar, substitua logo.png por outro arquivo com o mesmo nome. Um logotipo enviado em Painel → Sistema → Identidade tem prioridade sobre este arquivo no site (não nos e-mails).
+icone-192.png, icone-512.png, apple-touch-icon.png e favicon.png são os ícones do app instalado e da aba do navegador.
