@@ -505,7 +505,7 @@
           ${p.n_correcoes ? `<div class="original">Descrição original: ${esc(p.descricao_original)}</div>` : ''}</div>
         <dl class="det-grade">
           <div><dt>Tipo</dt><dd>${esc(tipoTxt)}</dd></div>
-          <div><dt>Prazo</dt><dd>${p.prazo_data ? `${data(`${p.prazo_data}T12:00:00`)} ${prazoHtml(p)}` : 'Sem prazo informado'}</dd></div>
+          <div><dt>Prazo</dt><dd>${p.prazo_data ? `${p.status === 'concluido' ? `${data(`${p.prazo_data}T12:00:00`)} ` : ''}${prazoHtml(p)}` : 'Sem prazo informado'}</dd></div>
           <div><dt>Onde está agora</dt><dd>${p.status === 'concluido' ? `Entregue (${esc(p.e3_setor || '')})` : ondeHtml(p)}</dd></div>
           <div><dt>Setor de destino</dt><dd>${esc(p.setor_destino_nome || (p.status === 'pendente_adm' ? 'Será definido pelo ADM' : p.devolvido ? 'A definir pelo ADM' : '—'))}</dd></div>
           <div><dt>Registrado em</dt><dd>${data(p.created_at)} às ${hora(p.created_at, true)}</dd></div>
@@ -624,6 +624,7 @@
   function ajustarTipo() {
     const f = $('#form-novo'), jud = f.tipo.value === 'judicial';
     $('#foto-obrig').textContent = jud ? '(obrigatória para demanda judicial)' : '(opcional)';
+    $('#foto-obrig').classList.toggle('obrig', jud);
     $('#dica-tipo').textContent = jud
       ? 'Demanda judicial: é sempre URGENTE, o prazo padrão é aplicado automaticamente e o ADM é avisado na hora. O ADM pode ajustar o prazo real depois.'
       : 'Correspondência comum: sem prazo. O ADM é avisado da chegada.';

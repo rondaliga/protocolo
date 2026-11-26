@@ -245,7 +245,8 @@ label.chk { display: flex; align-items: center; gap: .4rem; color: var(--erro); 
 label.chk input { width: auto; margin: 0; display: inline; }
 .foto-box { border: 1px dashed var(--azul-borda); border-radius: 8px; padding: .6rem .8rem; margin: .8rem 0; }
 .foto-box legend { font-size: .82rem; font-weight: 700; color: var(--suave); padding: 0 .3rem; }
-.foto-box legend span { color: var(--erro); }
+.foto-box legend span { color: var(--suave); font-weight: 600; }
+.foto-box legend span.obrig { color: var(--erro); font-weight: 700; }
 
 /* ---------- v3: assinatura, trilha, painel de controle ---------- */
 .et-sub { display: block; color: var(--suave); font-size: .76rem; margin-top: .1rem; }
@@ -534,8 +535,9 @@ main:focus { outline: none; }
 .sis-indice span { font-size: .82rem; font-weight: 700; color: var(--suave); margin-right: .2rem; }
 .sis-indice button { border: 1px solid var(--borda); background: var(--cartao); border-radius: 999px; padding: .3rem .8rem; font-size: .82rem; font-weight: 700; color: var(--azul-esc); cursor: pointer; }
 .sis-indice button:hover { background: var(--acao); color: #fff; }
-.sis-sec { display: grid; gap: .8rem; align-content: start; scroll-margin-top: 3.2rem; }
+.sis-sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: .8rem; align-content: start; scroll-margin-top: 3.2rem; }
 .sis-sec > h2 { font-size: 1.1rem; margin: 0; padding-bottom: .3rem; border-bottom: 2px solid var(--borda); color: var(--azul-esc); }
+.sis-sec > * { min-width: 0; }
 .sis-sec > h2:focus { outline: none; }
 .sis-sec .sub, .sis-sec .barra { margin: 0; }
 .cartao-cfg.sem-titulo { padding-top: 1rem; }
@@ -752,3 +754,30 @@ table td.d, table td.detalhes { overflow-wrap: anywhere; }
 .cred-cp.copiado, #cred-copiar-tudo.copiado { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 .cred-aviso { margin: 0 0 .6rem; font-size: .88rem; color: var(--suave); }
 .cred-email { margin: 0 0 .8rem; padding: .55rem .8rem; border-radius: 8px; font-size: .88rem; line-height: 1.4; background: var(--ok-bg); color: var(--ok); }
+
+/* AJUSTES DE CELULAR (auditoria visual) */
+.det-grade dd small { display: block; margin-top: .3rem; color: var(--suave); font-size: .86rem; }
+@media (max-width: 520px) {
+  .modal-acoes { flex-direction: column-reverse; align-items: stretch; }
+  .modal-acoes .btn { width: 100%; justify-content: center; }
+  .det-rodape-sec, .det-rodape-pri { width: 100%; }
+  .det-rodape .btn { flex: 1 1 calc(50% - .5rem); justify-content: center; }
+  .det-rodape-pri .btn { flex-basis: 100%; }
+}
+
+/* Celular: "Novo registro" sempre à mão (botão flutuante) e lista de usuários em cartões */
+@media (max-width: 700px) {
+  #btn-novo:not([hidden]) { position: fixed; right: 1rem; bottom: 1rem; z-index: 30; box-shadow: 0 8px 22px rgba(15, 40, 60, .35); padding: .8rem 1.1rem; }
+  main { padding-bottom: 5.5rem; }
+  .tabela-usr, .tabela-usr tbody { display: block; }
+  .tabela-usr thead { display: none; }
+  .tabela-usr tr { display: grid; gap: .35rem; padding: .9rem 1rem; border-bottom: 1px solid var(--borda); }
+  .tabela-usr tr:last-child { border-bottom: 0; }
+  .tabela-usr td { display: block; padding: 0; border: 0; }
+  .tabela-usr td.nw { white-space: normal; color: var(--suave); font-size: .85rem; }
+  .tabela-usr td[data-rot]::before { content: attr(data-rot) ": "; font-weight: 600; }
+  .tabela-usr td.acoes { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+  .tabela-usr td.acoes .btn { margin: 0; }
+  .tabela-usr td.vazio { text-align: center; }
+  #usr-busca { width: 100%; }
+}

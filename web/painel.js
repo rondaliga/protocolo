@@ -299,7 +299,7 @@
         <td><strong>${esc(u.nome)}</strong>${u.user_id === eu ? ' <span class="tag">você</span>' : ''}${painel.mfa && painel.mfa.has(u.user_id) ? ' <span class="tag" title="Verificação em duas etapas ativa">2 etapas</span>' : ''}<small class="et-sub">${esc(u.email || '')}</small></td>
         <td>${esc(PAPEIS[u.papel] || u.papel)}${u.setor_nome ? `<small class="et-sub">${esc(u.setor_nome)}</small>` : ''}</td>
         <td>${situacao(u)}</td>
-        <td class="nw">${u.ultimo_acesso ? `${data(u.ultimo_acesso)} ${hora(u.ultimo_acesso)}` : 'nunca entrou'}</td>
+        <td class="nw" data-rot="Último acesso">${u.ultimo_acesso ? `${data(u.ultimo_acesso)} ${hora(u.ultimo_acesso)}` : 'nunca entrou'}</td>
         <td class="acoes" data-uid="${esc(u.user_id)}">
           <button type="button" class="btn mini sec" data-uacao="editar" data-ico="editar">Editar</button>
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini sec" data-uacao="senha" data-ico="chave">Nova senha</button>
