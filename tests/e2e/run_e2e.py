@@ -883,10 +883,10 @@ try:
         page.click("[data-aba=protocolos]")
         assert n_teste not in page.inner_text("#tbody"), "por padrão, nem o gestor que marcou vê o registro de teste"
         expect(page.locator("#f-incluir-teste")).to_be_visible()
-        page.click("#f-incluir-teste input"); page.wait_for_timeout(700)
+        page.click("#f-incluir-teste"); page.wait_for_timeout(700)
         linha_teste = page.locator(f"#tbody tr:has-text('{n_teste}')"); linha_teste.wait_for()
         assert "TESTE" in linha_teste.inner_text()
-        page.click("#f-incluir-teste input"); page.wait_for_timeout(700)
+        page.click("#f-incluir-teste"); page.wait_for_timeout(700)
         assert n_teste not in page.inner_text("#tbody")
 
         # a trilha de auditoria NUNCA esconde: o mesmo gestor vê a marcação da conta de teste e o registro do protocolo de teste

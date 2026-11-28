@@ -150,9 +150,15 @@
             <option value="prazo">Prazo mais próximo</option>
           </select>
         </label>
-        <label>De <input type="date" name="data_ini"></label>
-        <label>Até <input type="date" name="data_fim"></label>
-        <label class="f-check" id="f-incluir-teste" hidden><input type="checkbox" name="incluir_teste"> Incluir registros de teste</label>
+        <div class="f-intervalo">
+          <label>De <input type="date" name="data_ini"></label>
+          <label>Até <input type="date" name="data_fim"></label>
+        </div>
+        <label class="f-chip f-chip-teste" id="f-incluir-teste" hidden>
+          <input type="checkbox" name="incluir_teste">
+          <span class="f-chip-marca" data-ico="ok" aria-hidden="true"></span>
+          Incluir registros de teste
+        </label>
         <button data-ico="fechar" class="btn sec" type="button" id="btn-limpar">Limpar</button>
       </form>
 
