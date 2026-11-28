@@ -17,6 +17,15 @@
   const pl = (n, um, varios) => `${n} ${Number(n) === 1 ? um : varios}`;
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // O GoTrue do Supabase devolve totp.qr_code já como "data:image/svg+xml,<svg...>" em algumas versões,
+  // mas em outras devolve só o SVG puro (começando em "<svg" ou "<?xml"), sem o prefixo — sem este
+  // tratamento, o <img> fica com src vazio e o QR Code nunca aparece (só o texto alternativo).
+  const qrParaSrc = (qr) => {
+    const s = String(qr || '').trim();
+    if (/^data:image\/svg\+xml/i.test(s)) return s;
+    if (/^(<\?xml|<svg)/i.test(s)) return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(s)}`;
+    return '';
+  };
 
   // ------------------------------------------------------------------ configuração
   const CFG = Object.assign({ UNIDADE: 'CECAN – LNRCC', TIMEZONE: 'America/Fortaleza', IDLE_MINUTES: 360,
@@ -272,7 +281,7 @@
         for (const x of (estado.mfaCad.fatores || []).filter((y) => y.status !== 'verified')) { try { await gotrue('DELETE', `/factors/${x.id}`); } catch { /* ok */ } }
         const j = await gotrue('POST', '/factors', { factor_type: 'totp', friendly_name: `Livro de Protocolo ${new Date().toISOString().slice(0, 16)}`, issuer: 'Livro de Protocolo' });
         estado.mfaCad.fatorNovo = j.id;
-        const qr = j.totp && j.totp.qr_code; $('#mfa-qr').src = /^data:image\/svg\+xml/.test(qr || '') ? qr : '';
+        const qr = j.totp && j.totp.qr_code; $('#mfa-qr').src = qrParaSrc(qr);
         $('#mfa-chave').textContent = (j.totp && j.totp.secret || '').replace(/(.{4})/g, '$1 ').trim();
         btn.hidden = true; $('#mfa-cad-qr').hidden = false; $('#mfa-ativar').hidden = false; f.codigo.focus();
       } catch (e) { erroForm(f, e.message); } finally { btn.disabled = false; }

@@ -457,23 +457,23 @@
     function montarParametros() {
       $('#param-corpo').innerHTML = `
         <div class="param-grade">
-          <section class="cartao-cfg"><h3>Expediente</h3>
+          <section class="cartao-cfg"><h3 data-ico="relogio">Expediente</h3>
             <p class="dica">As horas úteis contam somente neste horário, de segunda a sexta, exceto feriados.</p>
             <div class="param-linhas two">
               <label>Início <input type="time" name="expediente_inicio" required></label>
               <label>Fim <input type="time" name="expediente_fim" required></label>
             </div><p class="param-aviso" id="p-exped" hidden></p></section>
-          <section class="cartao-cfg"><h3>Prazos padrão</h3>
+          <section class="cartao-cfg"><h3 data-ico="cronometro">Prazos padrão</h3>
             <p class="dica">Em dias úteis. Para correspondências, 0 = sem prazo.</p>
             <div class="param-linhas">
               <label>Demandas judiciais <span class="un-in"><input type="number" name="prazo_judicial_dias" min="0" max="365" step="1" required><i>dias</i></span></label>
               <label>Correspondências <span class="un-in"><input type="number" name="prazo_correspondencia_dias" min="0" max="365" step="1" required><i>dias</i></span></label>
               <label>Avisar com antecedência de <span class="un-in"><input type="number" name="alerta_prazo_dias" min="0" max="365" step="1" required><i>dias</i></span></label>
             </div></section>
-          <section class="cartao-cfg"><h3>Segurança da sessão</h3>
+          <section class="cartao-cfg"><h3 data-ico="cadeado">Segurança da sessão</h3>
             <p class="dica">Sem usar o sistema por este tempo, o usuário é desconectado. Aceita 6h, 6:00, 90min ou 1,5 (horas); de 5 min a 24 h.</p>
             <div class="param-linhas"><label>Encerrar após ${campoDur('sessao_inatividade_min', 1440)}</label></div></section>
-          <section class="cartao-cfg larga"><h3>Regras gerais</h3>
+          <section class="cartao-cfg larga"><h3 data-ico="escudo">Regras gerais</h3>
             <div class="param-linhas">
               <label class="chk neutro"><input type="checkbox" name="foto_obrigatoria_judicial"> <span class="chk-txt">Exigir foto do envelope nas demandas judiciais</span></label>
               <label class="chk neutro"><input type="checkbox" name="gestor_ignora_segregacao"> <span class="chk-txt">Permitir que o gestor assine mais de uma etapa do mesmo protocolo</span></label>
@@ -575,12 +575,30 @@
       try {
         logoEst.novo = null; $('#logo-salvar').disabled = true; $('#logo-pin').value = ''; mostrarLogoPrevia(LP.estado().logoSrc);
         const r = await rpc('painel_resumo');
-        const k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
-        $('#sistema-kpis').innerHTML = k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'))
-          + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio') + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos')
-          + k('Envio imediato (Brevo)', r.brevo_configurado ? 'Ativo' : 'Inativo', r.brevo_configurado ? 'avisos saem na hora' : 'veja o guia do Brevo')
-          + k('E-mails na fila', r.email_pendente, 'aguardando envio') + k('E-mails com erro', r.email_erro, r.ultimo_erro_email || 'nenhum erro')
-          + k('E-mails enviados', r.email_enviado, 'total entregue');
+        const k = (rot, v, sub, ico, cls = '') => `<div class="kpi estatico${cls ? ` ${cls}` : ''}"><span class="kpi-ico" data-ico="${ico}"></span><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
+        const grupo = (tit, ico, miolo) => `<div class="kpis-grupo"><h4 class="kpis-grupo-tit" data-ico="${ico}">${esc(tit)}</h4><div class="kpis">${miolo}</div></div>`;
+        $('#sistema-kpis').innerHTML =
+          grupo('Pessoas e segurança', 'pessoas',
+            k('Usuários ativos', r.usuarios_ativos, pl(r.usuarios_inativos, 'inativo', 'inativos'), 'pessoas')
+            + k('PIN bloqueado', r.pin_bloqueado, 'aguardam desbloqueio', 'cadeado', r.pin_bloqueado > 0 ? 'k-venc' : 'k-ok')
+            + k('Sem e-mail no perfil', r.sem_email, 'não recebem avisos', 'email', r.sem_email > 0 ? 'k-adm' : 'k-ok'))
+          + grupo('Envio de avisos por e-mail', 'email',
+            k('Envio imediato (Brevo)', r.brevo_configurado ? 'Ativo' : 'Inativo', r.brevo_configurado ? 'avisos saem na hora' : 'veja o guia do Brevo', 'raio', r.brevo_configurado ? 'k-ok' : 'k-adm')
+            + k('E-mails na fila', r.email_pendente, 'aguardando envio', 'nuvem', r.email_pendente > 5 ? 'k-adm' : '')
+            + k('E-mails com erro', r.email_erro, r.ultimo_erro_email || 'nenhum erro', 'alerta', r.email_erro > 0 ? 'k-venc' : 'k-ok')
+            + k('E-mails enviados', r.email_enviado, 'total entregue', 'verificar', 'k-setor'));
+        const visao = $('#sistema-visao');
+        const criticos = [], atencoes = [];
+        if (r.pin_bloqueado > 0) criticos.push(pl(r.pin_bloqueado, 'PIN bloqueado', 'PINs bloqueados'));
+        if (r.email_erro > 0) criticos.push(pl(r.email_erro, 'e-mail com erro de envio', 'e-mails com erro de envio'));
+        if (r.sem_email > 0) atencoes.push(pl(r.sem_email, 'usuário sem e-mail cadastrado', 'usuários sem e-mail cadastrado'));
+        if (!r.brevo_configurado) atencoes.push('envio imediato de e-mail (Brevo) inativo');
+        if (!r.push_configurado) atencoes.push('avisos no celular ainda não ativados');
+        let estado = 'ok', vIco = 'ok', titulo = 'Tudo operando normalmente', detalhe = 'Nenhuma pendência encontrada nos usuários e nos avisos.';
+        if (criticos.length) { estado = 'critico'; vIco = 'alerta'; titulo = 'Atenção necessária'; detalhe = criticos.concat(atencoes).join(' · '); }
+        else if (atencoes.length) { estado = 'atencao'; vIco = 'info'; titulo = 'Em ordem, com pontos de melhoria'; detalhe = atencoes.join(' · '); }
+        visao.hidden = false; visao.className = `sis-visao ${estado}`;
+        visao.innerHTML = `<span class="sis-visao-ico" data-ico="${vIco}"></span><span class="sis-visao-txt"><strong>${esc(titulo)}</strong><span>${esc(detalhe)}</span></span>`;
         $('#push-estado').textContent = r.push_configurado
           ? `Envio ativo. ${pl(r.push_aparelhos, 'aparelho ativado', 'aparelhos ativados')}. Cada usuário ativa em Minha conta > Avisos neste aparelho.`
           : 'Ainda não ativado. É opcional: sem ele, os avisos chegam pelo sino e por e-mail.';

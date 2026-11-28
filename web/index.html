@@ -58,6 +58,7 @@
     </div>
     <div class="usuario">
       <div class="usuario-txt"><strong id="usr-nome"></strong><span id="usr-papel"></span></div>
+      <button class="btn mini tema-icone" type="button" data-tema-btn aria-label="Tema"></button>
       <div class="sino-wrap">
         <button class="btn mini sino" id="btn-sino" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Pendências e avisos">
           <span data-ico="sino"></span> Pendências <span class="sino-n" id="sino-n" hidden>0</span></button>
@@ -79,8 +80,6 @@
           <button type="button" role="menuitem" id="btn-mfa"><span data-ico="escudo"></span>Verificação em duas etapas</button>
           <button type="button" role="menuitem" id="btn-avisos"><span data-ico="sino"></span>Avisos neste aparelho</button>
           <button type="button" role="menuitem" id="btn-delegar" hidden><span data-ico="seguir"></span>Delegar recebimento</button>
-          <hr>
-          <button type="button" role="menuitem" class="btn-tema" data-tema-btn>Tema: Automático</button>
         </div>
       </div>
       <button class="btn mini" id="btn-sair" type="button"><span data-ico="sair"></span> Sair</button>
@@ -334,7 +333,8 @@
         </section>
         <section class="sis-sec" id="sis-uso" aria-labelledby="sis-uso-t">
           <h2 data-ico="grafico" id="sis-uso-t" tabindex="-1">Uso do sistema</h2>
-        <div class="kpis" id="sistema-kpis"></div>
+        <div class="sis-visao" id="sistema-visao" aria-live="polite" hidden></div>
+        <div id="sistema-kpis"></div>
         <p class="dica" id="sistema-aviso"></p>
         <div class="barra"><button type="button" class="btn sec" id="btn-email-teste" data-ico="email">Enviar e-mail de teste</button><span class="dica" id="email-teste-msg" role="status"></span></div>
         <section class="cartao-cfg larga" id="cartao-diag" aria-labelledby="diag-t">
