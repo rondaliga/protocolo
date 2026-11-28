@@ -549,12 +549,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "14 de 14" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "15 de 15" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 14
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 15
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -896,8 +896,27 @@ try:
         page.fill("#form-aud input[name=q]", "Maria (Portaria)"); page.wait_for_timeout(900)
         assert "marcad" in page.inner_text("#tbody-audit").lower() or psql("select count(*) from public.auditoria where acao='CONTA_MARCADA_TESTE'") == "1"
         page.fill("#form-aud input[name=q]", ""); page.wait_for_timeout(500)
+        sair(page)
+
+        # =================== v15: abrir o detalhe de um protocolo além do próprio "balde" de ambiente ===================
+        # bug real relatado em produção: ao abrir um protocolo pelo link do QR/número (o mesmo caminho do clique
+        # no número a partir da Trilha), a conta recebia "Protocolo não encontrado." mesmo tendo permissão de
+        # papel sobre ele — porque detalhe_protocolo() herdava o filtro de ambiente pensado só para o Livro.
+        # Aqui: Maria (Portaria) ainda está marcada como conta de teste (só vê ambiente='teste' no Livro) e tenta
+        # abrir pelo número um protocolo de PRODUÇÃO (2026-0002, registrado antes de ela virar conta de teste).
+        # Antes da correção: protocolo_por_numero() (baseado só no papel) encontrava o id normalmente, mas
+        # detalhe_protocolo() devolvia nulo por causa do ambiente — toast "Protocolo não encontrado.".
+        page.goto(URL + "#p=2026-0002"); page.locator("#form-login").wait_for(state="visible")
+        page.fill("input[name=email]", "portaria@teste.local"); page.fill("input[name=senha]", SENHA); page.click("#form-login button[type=submit]")
+        page.locator("#view-app").wait_for(state="visible")
+        page.locator("#dlg-detalhe[open]").wait_for(state="visible", timeout=10000)
+        assert "2026-0002" in page.inner_text("#dlg-detalhe"), "quem tem permissão de papel deve abrir o detalhe, mesmo de um protocolo de outro ambiente"
+        assert page.locator("#toast:not([hidden])", has_text="não encontrado").count() == 0, "não deve aparecer o toast de 'não encontrado' indevido"
+        page.keyboard.press("Escape"); page.evaluate("document.querySelectorAll('dialog[open]').forEach((d) => d.close())")
+        sair(page)
 
         # desmarca de volta (deixa o banco limpo para não afetar nenhuma outra verificação)
+        login(page, "gestor", senha=SENHA, email="gestor@teste.local")
         page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]"); page.locator("#tbody-usr tr").first.wait_for()
         linha = page.locator("#tbody-usr tr:has-text('Maria (Portaria)')"); linha.wait_for()
         linha.locator("[data-uacao=teste]").click()

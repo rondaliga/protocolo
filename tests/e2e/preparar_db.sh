@@ -20,6 +20,7 @@ psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 11_boas_vindas.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 12_qr_excluir_usuario.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 13_ambiente_teste.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 14_melhorias_teste_assinatura_email.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d "$DB" -f 15_corrigir_detalhe_teste.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d "$DB" >/dev/null <<'SQL'
 insert into auth.users (email) values ('portaria@teste.local'),('adm@teste.local'),('juridico@teste.local'),('farmacia@teste.local'),('gestor@teste.local');
 select public.admin_cadastrar_perfil('portaria@teste.local','Maria (Portaria)','portaria',null,'1111');

@@ -703,7 +703,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 14 arquivos', (select count(*) from public.schema_versao) = 14 and public.versao_schema() = 14);
+  perform t.afirma('schema_versao registra os 15 arquivos', (select count(*) from public.schema_versao) = 15 and public.versao_schema() = 15);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -719,7 +719,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '14', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '15', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -1208,5 +1208,36 @@ begin
     v_html like '%<!DOCTYPE html%' and v_html like '%Livro de Protocolo Eletrônico%' and v_html not like '%<script%', left(v_html, 60));
 
   perform t.afirma('schema 14 registrado', exists (select 1 from public.schema_versao where versao = 14));
+end $$;
+
+-- 15. Correção: abrir o detalhe de um protocolo de teste a partir da Trilha de auditoria
+--     (antes desta migração, detalhe_protocolo() herdava o filtro de ambiente de v_livro — pensado
+--     só para o Livro/relatórios — e por isso um ADM ou a própria Portaria viam "Protocolo não
+--     encontrado." ao clicar no número de um protocolo de teste na Trilha, embora o registro nunca
+--     tivesse sumido: a trilha de auditoria sempre mostrou o ato normalmente, só o detalhe é que
+--     estava sendo bloqueado por engano).
+do $$
+declare r text; v_id_teste bigint;
+begin
+  v_id_teste := (select id from public.protocolos where descricao = 'Ofício de teste técnico - validação');
+
+  -- ADM (não é gestor, não é a conta de teste) tinha o detalhe ocultado pelo filtro do Livro; agora abre.
+  r := t.como('adm@x', format($q$select (public.detalhe_protocolo(%s)->>'ambiente')$q$, v_id_teste));
+  perform t.afirma('ADM consegue abrir o detalhe do protocolo de teste a partir da trilha', r = 'teste', r);
+
+  -- a própria Portaria que registrou (hoje já não é conta de teste, ver seção 14) também abre o detalhe.
+  r := t.como('portaria@x', format($q$select (public.detalhe_protocolo(%s)->>'ambiente')$q$, v_id_teste));
+  perform t.afirma('Portaria consegue abrir o detalhe do protocolo de teste a partir da trilha', r = 'teste', r);
+
+  -- mas a visão do Livro para quem não tem autorização de ver teste continua só em produção
+  -- (a correção não muda em nada o que listar_livro/resumo_livro mostram, só o detalhe por id).
+  r := t.como('adm@x', $q$select exists (select 1 from jsonb_array_elements((public.listar_livro()->'itens')) i where (i->>'id')::bigint = $q$ || v_id_teste || $q$)::text$q$);
+  perform t.afirma('o Livro do ADM continua sem listar o protocolo de teste', r = 'false', r);
+
+  -- quem não tem nenhuma permissão sobre o protocolo (super_setor de outro setor) continua sem acesso
+  r := t.como('far@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id_teste));
+  perform t.afirma('super_setor sem relação com o protocolo continua sem ver o detalhe (RLS, não o ambiente)', r = 'true', r);
+
+  perform t.afirma('schema 15 registrado', exists (select 1 from public.schema_versao where versao = 15));
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='

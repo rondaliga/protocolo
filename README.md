@@ -355,6 +355,13 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 - **Identidade visual única:** todo e-mail que o sistema envia (chegada, encaminhamento, devolução, reencaminhamento, avisos de prazo/SLA, boas-vindas) agora tem uma versão em HTML com o mesmo cabeçalho azul, tipografia e rodapé — antes só o e-mail de boas-vindas tinha versão HTML; os demais saíam em texto simples. A versão em texto simples continua existindo (reserva para quem lê e-mail sem HTML).
 - **Assinatura digitada:** 10 estilos de fonte (eram 6) — Clássica, Elegante, Manuscrita, Formal, Moderna, Rubrica, e quatro novos de acabamento mais refinado: Executiva, Imperial, Caligráfica e Contemporânea, com floreios e leve sombreado para um resultado mais parecido com uma assinatura de verdade. O botão antes chamado "Só o PIN" agora é só **PIN**.
 
+## 4N. Correção: abrir o detalhe de um protocolo de teste a partir da Trilha (migração 15)
+
+- **O problema:** depois da migração 13, clicar no número de um protocolo numa linha da Trilha de auditoria podia mostrar **"Protocolo não encontrado."**, mesmo o protocolo existindo e aparecendo normalmente na própria trilha. Acontecia sempre que o protocolo era `ambiente = 'teste'` e quem clicava não era nem a conta de teste que o criou nem um gestor: a função que abre o detalhe (`detalhe_protocolo`) reaproveitava a mesma visão usada pelo Livro de protocolos (`v_livro`), que por desenho deixa de listar os registros de teste para quem não tem esse filtro ligado — certo para a tela do Livro, errado para abrir um detalhe a partir de um link que a própria Trilha (que nunca esconde nada) já está mostrando.
+- **Nada foi perdido:** o protocolo e todo o seu histórico sempre estiveram intactos no banco; só a tela de detalhe aplicava, por engano, um filtro pensado para outra finalidade.
+- **A correção:** quem pode abrir o detalhe de um protocolo passa a depender só da permissão de papel sobre aquele protocolo (a mesma regra de sempre, `pode_ver_protocolo`/RLS) — nunca do ambiente (teste ou produção). O Livro, os relatórios e o sino de pendências continuam exatamente como antes (só produção por padrão, com o filtro "Incluir registros de teste" para quem pode ver teste); só a abertura do detalhe por clique deixou de ser bloqueada.
+- **Se você já tinha marcado alguma conta como teste antes desta migração** e algum protocolo registrado por ela parecer "não encontrado" ao clicar na Trilha, isso se resolve sozinho ao aplicar a migração 15 (já incluída no `instalacao_completa.sql`) — não é necessário fazer mais nada, o registro nunca saiu do banco.
+
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 
 ### Backup agendado e cifrado (`.github/workflows/backup.yml`)
