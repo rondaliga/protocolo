@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 SQL = Path(__file__).resolve().parent.parent / "supabase"
-ARQUIVOS = ["schema.sql", "02_prazos_alertas.sql", "03_painel_gestor.sql", "04_logo_horas_exclusoes.sql", "05_melhorias.sql", "06_inatividade.sql", "07_mfa.sql", "08_fluxo.sql", "09_alertas_imediatos.sql", "10_relatorios_push_diagnostico.sql", "11_boas_vindas.sql", "12_qr_excluir_usuario.sql", "13_ambiente_teste.sql", "14_melhorias_teste_assinatura_email.sql", "15_corrigir_detalhe_teste.sql"]
+ARQUIVOS = ["schema.sql", "02_prazos_alertas.sql", "03_painel_gestor.sql", "04_logo_horas_exclusoes.sql", "05_melhorias.sql", "06_inatividade.sql", "07_mfa.sql", "08_fluxo.sql", "09_alertas_imediatos.sql", "10_relatorios_push_diagnostico.sql", "11_boas_vindas.sql", "12_qr_excluir_usuario.sql", "13_ambiente_teste.sql", "14_melhorias_teste_assinatura_email.sql", "15_corrigir_detalhe_teste.sql", "16_delegacao_produtividade.sql"]
 SAIDA = SQL / "instalacao_completa.sql"
 
 

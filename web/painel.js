@@ -28,6 +28,7 @@
       FERIADO_REMOVIDO: 'Feriado removido', PARAMETROS_ALTERADOS: 'Regras e prazos alterados', LOGO_ALTERADO: 'Logotipo do sistema alterado',
       BACKUP_EXPORTADO: 'Backup exportado', MFA_ATIVADO: 'Verificação em 2 etapas ativada', MFA_DESATIVADO: 'Verificação em 2 etapas desativada', MFA_REDEFINIDO: 'Verificação em 2 etapas redefinida', PROTOCOLO_EXCLUIDO: 'Protocolo excluído', TRILHA_EXCLUIDA: 'Registros da trilha excluídos', PERFIL_CADASTRADO: 'Perfil cadastrado (SQL)', PERFIL_DESATIVADO: 'Perfil desativado (SQL)',
       PERFIL_REATIVADO: 'Perfil reativado (SQL)', SEGREDO_INTEGRACAO_DEFINIDO: 'Segredo dos e-mails definido', EMAIL_TESTE: 'E-mail de teste enviado', USUARIO_EXCLUIDO: 'Usuário excluído', ACESSO_ENVIADO_POR_EMAIL: 'Dados de acesso enviados por e-mail', RELATORIO_GERADO: 'Relatório gerado',
+      DELEGACAO_CRIADA: 'Delegação de recebimento criada', DELEGACAO_REVOGADA: 'Delegação de recebimento revogada',
     };
 
     // ---------- parâmetros: rótulos, formatos de hora e de duração (espelham as regras do banco)
@@ -249,7 +250,7 @@
     }
 
     // ================================================================== PAINEL DE CONTROLE
-    const painel = { sub: 'usuarios', usuarios: [], setores: [] };
+    const painel = { sub: 'usuarios', usuarios: [], setores: [], delegacoes: [] };
     const SUBS = ['usuarios', 'relatorios', 'sistema', 'cadastros', 'backup'];
 
     function abrirPainel() { trocarSub(painel.sub); }
@@ -260,7 +261,7 @@
       if (n === 'usuarios') carregarUsuarios();
       else if (n === 'relatorios') iniciarRelatorio();
       else if (n === 'sistema') { carregarParametros(); carregarSistema(); }
-      else if (n === 'cadastros') { carregarSetores(); carregarFeriados(); }
+      else if (n === 'cadastros') { carregarSetores(); carregarFeriados(); carregarDelegacoes(); }
       else carregarBackup();
     }
     const falha = (e) => toast(e.message, true);
@@ -430,6 +431,25 @@
       $('#dlg-setor').showModal(); f.nome.focus();
     }
 
+    // ---------- delegações de recebimento (visão do gestor: enxerga e pode revogar todas)
+    async function carregarDelegacoes() {
+      try { painel.delegacoes = await rpc('painel_listar_delegacoes'); renderDelegacoes(); } catch (e) { falha(e); }
+    }
+    function renderDelegacoes() {
+      $('#tbody-deleg').innerHTML = painel.delegacoes.map((d) => `<tr class="${d.vigente ? '' : 'inativo'}">
+        <td>${esc(d.setor_nome)}</td><td>${esc(d.delegante_nome)}</td><td>${esc(d.delegado_nome)}</td>
+        <td>${data(`${d.inicio}T12:00:00`)} – ${data(`${d.fim}T12:00:00`)}</td>
+        <td>${d.vigente ? '<span class="sit ok">Em vigor</span>' : d.ativa ? '<span class="sit">Agendada</span>' : '<span class="sit off">Encerrada</span>'}</td>
+        <td class="acoes">${d.ativa && d.pode_revogar ? `<button type="button" class="btn mini sec" data-did="${esc(d.id)}" data-ico="fechar">Revogar</button>` : ''}</td></tr>`).join('')
+        || '<tr><td colspan="6" class="vazio">Nenhuma delegação registrada.</td></tr>';
+    }
+    function abrirRevogarDelegacao(d) {
+      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.did = String(d.id); f.dataset.modo = 'revogar_delegacao';
+      $('#ativo-titulo').textContent = `Revogar a delegação de ${d.setor_nome} para ${d.delegado_nome}?`;
+      $('#ativo-info').textContent = `Delegada por ${d.delegante_nome}, de ${data(`${d.inicio}T12:00:00`)} a ${data(`${d.fim}T12:00:00`)}. A pessoa delegada perde o acesso imediatamente.`;
+      $('#dlg-ativo').showModal(); f.pin.focus();
+    }
+
     // ---------- parâmetros (um único formulário, um único botão Salvar)
     const prm = { valores: {}, jornada: 540 };
     const campoDur = (chave, max = 14400) => `<div class="dur"><input type="text" name="${chave}" data-dur data-max="${max}" maxlength="14" inputmode="text" autocomplete="off" aria-describedby="p-${chave}">
@@ -549,7 +569,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 15${v < 15 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 16${v < 16 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -596,10 +616,16 @@
       if (!f.inicio.value) { periodoRapido('30'); gerarRelatorio(); }
     }
     function graficoDias(dias) {
-      const max = Math.max(1, ...dias.map((d) => d.n)), N = dias.length, L = 10, A = 100;
-      const barras = dias.map((d, i) => { const h = Math.round((d.n / max) * A); return d.n ? `<rect class="g-barra" x="${i * L + 1}" y="${A - h}" width="${L - 2}" height="${h}"><title>${esc(data(d.dia + 'T12:00:00'))}: ${d.n}</title></rect>` : ''; }).join('');
-      return `<svg class="grafico" viewBox="0 0 ${N * L} ${A}" preserveAspectRatio="none" role="img" aria-label="Protocolos registrados por dia"><line class="g-eixo" x1="0" y1="${A}" x2="${N * L}" y2="${A}"/>${barras}</svg>
-        <div class="grafico-eixo"><span>${esc(data(dias[0].dia + 'T12:00:00'))}</span><span>pico: ${max} por dia</span><span>${esc(data(dias[N - 1].dia + 'T12:00:00'))}</span></div>`;
+      const max = Math.max(1, ...dias.map((d) => Math.max(d.registrados, d.concluidos))), N = dias.length, L = 12, A = 100, bw = (L - 3) / 2;
+      const barras = dias.map((d, i) => {
+        const x0 = i * L + 1, hr = Math.round((d.registrados / max) * A), hc = Math.round((d.concluidos / max) * A), dd = esc(data(`${d.dia}T12:00:00`));
+        const rr = d.registrados ? `<rect class="g-barra" x="${x0}" y="${A - hr}" width="${bw}" height="${hr}"><title>${dd}: ${d.registrados} registrado(s)</title></rect>` : '';
+        const rc = d.concluidos ? `<rect class="g-barra2" x="${x0 + bw + 1}" y="${A - hc}" width="${bw}" height="${hc}"><title>${dd}: ${d.concluidos} concluído(s)</title></rect>` : '';
+        return rr + rc;
+      }).join('');
+      return `<svg class="grafico" viewBox="0 0 ${N * L} ${A}" preserveAspectRatio="none" role="img" aria-label="Protocolos registrados e concluídos por dia"><line class="g-eixo" x1="0" y1="${A}" x2="${N * L}" y2="${A}"/>${barras}</svg>
+        <div class="grafico-legenda"><span class="leg-item"><i class="leg-cor g-barra"></i>Registrados</span><span class="leg-item"><i class="leg-cor g-barra2"></i>Concluídos</span></div>
+        <div class="grafico-eixo"><span>${esc(data(`${dias[0].dia}T12:00:00`))}</span><span>pico: ${max} por dia</span><span>${esc(data(`${dias[N - 1].dia}T12:00:00`))}</span></div>`;
     }
     function renderRelatorio(r) {
       const T = r.totais, tp = r.tempo_horas, k = (rot, v, sub = '') => `<div class="kpi estatico"><span class="kpi-rot">${esc(rot)}</span><strong>${esc(v)}</strong><small>${esc(sub) || '&nbsp;'}</small></div>`;
@@ -629,6 +655,12 @@
             <td class="num">${s.total}</td><td class="num">${s.concluidos}</td><td class="num">${s.aguardando}</td><td class="num ${s.vencidos ? 'alerta' : ''}">${s.vencidos}</td><td class="num">${horasTxt(s.horas_medias)}</td></tr>`).join('')
             : '<tr><td colspan="7">Nenhum protocolo encaminhado a setores neste período.</td></tr>'}
         </tbody></table></div>
+        <h3>Produtividade por usuário</h3>
+        <div class="tabela-rolagem"><table class="tab-rel"><thead><tr><th>Usuário</th><th>Perfil / setor</th><th class="num">Etapas</th><th class="num">1ª (registro)</th><th class="num">2ª (ADM)</th><th class="num">3ª (setor)</th><th class="num">Tempo médio de resposta</th></tr></thead><tbody>
+          ${r.por_usuario.length ? r.por_usuario.map((u) => `<tr><td>${esc(u.usuario)}</td><td>${esc(PAPEIS[u.papel] || u.papel)}${u.setor_nome ? ` · ${esc(u.setor_nome)}` : ''}</td>
+            <td class="num">${u.etapas}</td><td class="num">${u.etapa1}</td><td class="num">${u.etapa2}</td><td class="num">${u.etapa3}</td><td class="num">${horasTxt(u.tempo_medio_horas)}</td></tr>`).join('')
+            : '<tr><td colspan="7">Nenhuma atuação registrada neste período.</td></tr>'}
+        </tbody></table></div>
         <h3>Maiores atrasos (até 10)</h3>
         <div class="tabela-rolagem"><table class="tab-rel"><thead><tr><th>Protocolo</th><th>Está com</th><th>Tipo</th><th class="num">Dias de atraso</th></tr></thead><tbody>
           ${r.atrasados.length ? r.atrasados.map((a) => `<tr><td><button type="button" class="link" data-prot-rel="${esc(a.numero)}">${esc(a.numero)}</button>${a.urgente ? ' <span class="tag">urgente</span>' : ''}</td><td>${esc(a.setor)}</td><td>${a.tipo === 'judicial' ? 'Judicial' : 'Correspondência'}</td><td class="num alerta">${a.dias_atraso}</td></tr>`).join('')
@@ -653,7 +685,9 @@
       [['Portaria → ADM', tp.portaria_adm], ['ADM → setor', tp.adm_setor], ['Registro → conclusão', tp.total]].forEach(([i, o]) => add('Tempo médio (horas)', i, o.media, `máximo ${o.maximo === null ? '—' : o.maximo} h · ${o.n} protocolos`));
       r.por_setor.forEach((s) => add('Por setor', s.setor, s.total, `concluídos ${s.concluidos} · aguardando ${s.aguardando} · vencidos ${s.vencidos} · ADM→setor ${s.horas_medias === null ? '—' : s.horas_medias + ' h'}`));
       r.atrasados.forEach((a) => add('Maiores atrasos', a.numero, a.dias_atraso, `${a.setor} · ${a.tipo === 'judicial' ? 'judicial' : 'correspondência'}${a.urgente ? ' · urgente' : ''}`));
-      r.por_dia.forEach((d) => add('Registros por dia', data(d.dia + 'T12:00:00'), d.n));
+      r.por_dia.forEach((d) => add('Registros por dia', data(d.dia + 'T12:00:00'), d.registrados, `concluídos ${d.concluidos}`));
+      r.por_usuario.forEach((u) => add('Produtividade por usuário', u.usuario, u.etapas,
+        `1ª ${u.etapa1} · 2ª ${u.etapa2} · 3ª ${u.etapa3} · tempo médio ${u.tempo_medio_horas === null ? '—' : `${u.tempo_medio_horas} h`}${u.setor_nome ? ` · ${u.setor_nome}` : ''}`));
       return L;
     }
     async function exportarRelatorioXlsx() {
@@ -843,6 +877,11 @@
             async () => { $('#dlg-ativo').close(); toast(marcar ? 'Conta marcada como teste.' : 'Conta desmarcada como teste.'); await carregarUsuarios(); });
           return;
         }
+        if (form.dataset.modo === 'revogar_delegacao') {
+          enviar(form, () => rpc('painel_revogar_delegacao', { p_id: Number(form.dataset.did), p_pin: form.pin.value }),
+            async () => { $('#dlg-ativo').close(); toast('Delegação revogada.'); await carregarDelegacoes(); });
+          return;
+        }
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),
           async () => { $('#dlg-ativo').close(); toast(ativar ? 'Usuário reativado.' : 'Usuário desativado.'); await carregarUsuarios(); });
       });
@@ -861,6 +900,11 @@
         ev.preventDefault(); const form = ev.target;
         enviar(form, () => rpc('painel_salvar_setor', { p_id: form.dataset.id ? Number(form.dataset.id) : null, p_nome: form.nome.value, p_ativo: form.ativo.checked }),
           async () => { $('#dlg-setor').close(); toast('Setor salvo.'); painel.setores = []; LP.limparSetores(); await carregarSetores(); });
+      });
+
+      // delegações de recebimento
+      $('#tbody-deleg').addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-did]'); if (b) abrirRevogarDelegacao(painel.delegacoes.find((d) => String(d.id) === b.dataset.did));
       });
 
       // parâmetros: um só botão "Salvar alterações"

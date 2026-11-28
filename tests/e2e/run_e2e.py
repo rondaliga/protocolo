@@ -549,12 +549,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "15 de 15" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "16 de 16" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 15
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 16
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -922,6 +922,84 @@ try:
         linha.locator("[data-uacao=teste]").click()
         page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
         esperar_toast(page, "desmarcada")
+        sair(page)
+
+        # =================== v16: delegação temporária de recebimento + produtividade/tendência no relatório ===================
+        _dt = __import__("datetime")
+        hoje16, fim16 = _dt.date.today(), _dt.date.today() + _dt.timedelta(days=5)
+
+        # Jurídico delega o recebimento do seu setor para a Farmácia (ex.: férias)
+        login(page, "juridico")
+        abrir_item_conta(page, "#btn-delegar")
+        expect(page.locator("#dlg-delegacao[open]")).to_be_visible()
+        page.locator("#form-delegar select[name=delegado] option").nth(1).wait_for(state="attached", timeout=8000)
+        valor_far = page.eval_on_selector("#form-delegar select[name=delegado]",
+            "(el) => [...el.options].find((o) => o.textContent.includes('Farmácia'))?.value")
+        assert valor_far, "Farmácia deveria aparecer como candidata à delegação"
+        page.select_option("#form-delegar select[name=delegado]", valor_far)
+        page.fill("#form-delegar input[name=inicio]", hoje16.isoformat())
+        page.fill("#form-delegar input[name=fim]", fim16.isoformat())
+        page.fill("#form-delegar textarea[name=justificativa]", "Férias de 10 dias; Farmácia cobre o recebimento")
+        page.fill("#form-delegar input[name=pin]", "0000"); page.click("#form-delegar button[type=submit]")
+        page.locator("#form-delegar .erro").wait_for(state="visible"); assert "PIN" in page.inner_text("#form-delegar .erro")
+        page.fill("#form-delegar input[name=pin]", "3333"); page.click("#form-delegar button[type=submit]")
+        esperar_toast(page, "Delegação registrada"); page.wait_for_timeout(400)
+        assert "Farmácia" in page.inner_text("#deleg-atual") or "Carlos" in page.inner_text("#deleg-atual")
+        page.screenshot(path=str(OUT / "22_delegacao.png"))
+        page.click("#dlg-delegacao [data-fechar]"); sair(page)
+
+        # Portaria registra um protocolo que o ADM encaminha ao Jurídico
+        login(page, "portaria")
+        page.click("[data-aba=protocolos]"); page.click("#btn-novo")
+        page.fill("textarea[name=descricao]", "Ofício para teste da delegação de recebimento")
+        page.click("#form-novo .modo[data-modo=digitada]"); page.fill("#form-novo input[name=pin]", "1111")
+        page.click("#form-novo button[type=submit]"); esperar_toast(page, "registrado"); page.wait_for_timeout(600); fechar_folha(page)
+        n_deleg = psql("select numero from public.protocolos where descricao='Ofício para teste da delegação de recebimento'")
+        sair(page)
+        login(page, "adm")
+        if page.locator("#btn-limpar").is_visible(): page.click("#btn-limpar"); page.wait_for_timeout(300)   # limpa atalho "devolvidos" de uma sessão anterior
+        page.locator(f"#tbody tr:has-text('{n_deleg}')").wait_for(timeout=10000)
+        page.click(f"#tbody tr:has-text('{n_deleg}')"); page.click("[data-acao=adm]")
+        page.locator("#dlg-confirmar[open]").wait_for(timeout=8000)
+        page.locator("#sel-destino option", has_text="Jurídico").wait_for(state="attached")
+        page.select_option("#sel-destino", label="Jurídico")
+        page.click("#form-confirmar .modo[data-modo=digitada]"); page.fill("#form-confirmar input[name=pin]", "2222")
+        page.click("#form-confirmar button[type=submit]"); esperar_toast(page, "setor de destino avisado")
+        page.click("#detalhe-corpo [data-fechar]"); sair(page)
+
+        # com a delegação ativa, a Farmácia passa a enxergar e a poder confirmar o recebimento pelo Jurídico
+        login(page, "farmacia")
+        page.locator(f"#tbody tr:has-text('{n_deleg}')").wait_for(timeout=10000)
+        page.click(f"#tbody tr:has-text('{n_deleg}')"); page.click("[data-acao=setor]")
+        page.locator("#dlg-confirmar[open]").wait_for(timeout=8000)
+        page.click("#form-confirmar .modo[data-modo=digitada]"); page.fill("#form-confirmar input[name=pin]", "4444")
+        page.click("#form-confirmar button[type=submit]"); esperar_toast(page, "concluída"); page.wait_for_timeout(500)
+        page.click("#detalhe-corpo [data-fechar]"); sair(page)
+        assert psql(f"select status from public.protocolos where numero='{n_deleg}'") == "concluido"
+        assert psql(
+            f"select (detalhes->>'via_delegacao') from public.auditoria where acao='RECEBIMENTO_SETOR' "
+            f"and detalhes->>'numero'='{n_deleg}'") == "true", "o recebimento via delegação deve ficar marcado na trilha"
+
+        # o gestor enxerga a delegação no Painel de controle e pode revogá-la
+        login(page, "gestor")
+        page.click("#btn-aba-painel"); page.click("[data-sub=cadastros]")
+        page.locator("#tbody-deleg tr").first.wait_for()
+        linha_deleg = page.locator("#tbody-deleg tr:has-text('Carlos')"); linha_deleg.wait_for()
+        assert "Em vigor" in linha_deleg.inner_text()
+        page.screenshot(path=str(OUT / "23_painel_delegacoes.png"))
+        linha_deleg.locator("[data-did]").click()
+        page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
+        esperar_toast(page, "Delegação revogada"); page.wait_for_timeout(400)
+        assert "Encerrada" in page.locator("#tbody-deleg tr:has-text('Carlos')").inner_text()
+
+        # relatório gerencial: produtividade por usuário e tendência (registrados x concluídos) por dia
+        page.click("[data-sub=relatorios]"); expect(page.locator("#rel-saida .kpis-rel").first).to_be_visible(timeout=8000)
+        txt_rel16 = page.inner_text("#rel-saida").lower()
+        assert "produtividade por usuário" in txt_rel16 and n_deleg.lower() not in txt_rel16   # tabela por usuário presente (sem precisar citar o nº)
+        assert "concluídos" in page.inner_text("#rel-saida .grafico-legenda").lower()
+        assert "registrados" in page.inner_text("#rel-saida .grafico-legenda").lower()
+        assert "joão" in txt_rel16, "ADM deve aparecer na produtividade por usuário"
+        page.screenshot(path=str(OUT / "24_relatorio_produtividade.png"), full_page=True)
         sair(page)
         b.close()
     print("\nE2E OK")

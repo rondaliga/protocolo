@@ -362,6 +362,17 @@ fórmula) e **Imprimir/PDF**. Exportações e impressões também ficam registra
 - **A correção:** quem pode abrir o detalhe de um protocolo passa a depender só da permissão de papel sobre aquele protocolo (a mesma regra de sempre, `pode_ver_protocolo`/RLS) — nunca do ambiente (teste ou produção). O Livro, os relatórios e o sino de pendências continuam exatamente como antes (só produção por padrão, com o filtro "Incluir registros de teste" para quem pode ver teste); só a abertura do detalhe por clique deixou de ser bloqueada.
 - **Se você já tinha marcado alguma conta como teste antes desta migração** e algum protocolo registrado por ela parecer "não encontrado" ao clicar na Trilha, isso se resolve sozinho ao aplicar a migração 15 (já incluída no `instalacao_completa.sql`) — não é necessário fazer mais nada, o registro nunca saiu do banco.
 
+## 4O. Delegação temporária de recebimento, produtividade por usuário e tendência no relatório (migração 16)
+
+- **Delegação temporária de recebimento.** O responsável por um setor (`super_setor`) pode, em Minha conta → "Delegar recebimento", autorizar **outra pessoa já ativa no sistema** (de qualquer perfil) a receber e tramitar os documentos do seu setor por um período definido (ex.: férias, afastamento) — **sem precisar compartilhar o PIN**. A pessoa delegada confirma os recebimentos com o **próprio PIN e a própria assinatura**; a trilha de auditoria registra cada ato normalmente, com uma marca `via_delegacao` no detalhe, de forma totalmente transparente para qualquer gestor. A delegação:
+  - é criada e encerrada com PIN (de quem delega, de quem foi delegado, ou de qualquer gestor — todos podem revogar);
+  - vale só para o setor de quem delegou, não é "de mão dupla" e não dá acesso a nenhum outro setor;
+  - aparece, para todo gestor, no Painel de controle → Setores e feriados → "Delegações de recebimento", com a situação (agendada / em vigor / encerrada) e um botão para revogar qualquer uma a qualquer momento;
+  - **limitação aceita:** se a pessoa delegada não for `super_setor` (por exemplo, for do ADM ou da Portaria), os protocolos do setor delegado não aparecem no atalho "Meus pendentes" dela — só no Livro de protocolos e por link direto. Isso foi uma escolha deliberada para não aumentar o escopo da mudança; pode ser revisto depois, se fizer falta no dia a dia.
+- **Relatório de produtividade por usuário.** O relatório gerencial (Painel de controle → Relatórios) ganhou uma tabela **"Produtividade por usuário"**: quantas etapas cada pessoa realizou no período (1ª/2ª/3ª), separadas por perfil e setor, e o tempo médio de resposta dela nas etapas 2ª e 3ª. Entra também na exportação em Excel e na impressão.
+- **Gráfico de tendência.** O gráfico "Registros por dia" passou a trazer duas séries — **registrados** e **concluídos** — lado a lado em cada dia, para o gestor perceber se o volume represado está crescendo (muitos registros, poucas conclusões) ou diminuindo.
+- Nada disso altera a regra de ouro do sistema: a Trilha de auditoria continua mostrando tudo, para todo gestor, sem exceção — inclusive quem delegou, para quem, quando e o que foi feito por delegação.
+
 ## 4F. Versão 6 — backup agendado, verificação em duas etapas, aviso de logout e rascunho
 
 ### Backup agendado e cifrado (`.github/workflows/backup.yml`)

@@ -33,5 +33,7 @@ psql -v ON_ERROR_STOP=1 -q -d $DB -f ../14_melhorias_teste_assinatura_email.sql 
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../14_melhorias_teste_assinatura_email.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../15_corrigir_detalhe_teste.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../15_corrigir_detalhe_teste.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../16_delegacao_produtividade.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../16_delegacao_produtividade.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 02_testes.sql 2>&1 | sed -E 's/^psql:[^ ]+ [0-9]+: //'
 psql -qc "drop database $DB" postgres

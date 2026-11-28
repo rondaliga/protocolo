@@ -703,7 +703,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 15 arquivos', (select count(*) from public.schema_versao) = 15 and public.versao_schema() = 15);
+  perform t.afirma('schema_versao registra os 16 arquivos', (select count(*) from public.schema_versao) = 16 and public.versao_schema() = 16);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -719,7 +719,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '15', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '16', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -987,7 +987,7 @@ begin
   perform t.afirma('relatório do gestor traz totais, tempos, setores, dias e atrasos',
     (r::jsonb ? 'totais') and (r::jsonb ? 'tempo_horas') and (r::jsonb ? 'por_setor') and (r::jsonb ? 'por_dia') and (r::jsonb ? 'atrasados'), left(r, 200));
   perform t.afirma('relatório: soma por dia = registrados',
-    (select sum((d->>'n')::int) from jsonb_array_elements(r::jsonb->'por_dia') d) = (r::jsonb->'totais'->>'registrados')::int, r);
+    (select sum((d->>'registrados')::int) from jsonb_array_elements(r::jsonb->'por_dia') d) = (r::jsonb->'totais'->>'registrados')::int, r);
   perform t.afirma('relatório: concluídos + em andamento = registrados',
     (r::jsonb->'totais'->>'concluidos')::int + (r::jsonb->'totais'->>'em_andamento')::int = (r::jsonb->'totais'->>'registrados')::int, r);
   perform t.afirma('relatório não carrega descrição de documentos', r not like '%Ofício de teste imediato%');
@@ -1239,5 +1239,136 @@ begin
   perform t.afirma('super_setor sem relação com o protocolo continua sem ver o detalhe (RLS, não o ambiente)', r = 'true', r);
 
   perform t.afirma('schema 15 registrado', exists (select 1 from public.schema_versao where versao = 15));
+end $$;
+
+-- 16. Delegação temporária de recebimento + produtividade por usuário + tendência no relatório
+do $$
+declare
+  r text; j jsonb; v_id bigint; v_id2 bigint; v_del bigint;
+  v_jur bigint := (select id from public.setores where nome = 'Jurídico');
+  v_far bigint := (select id from public.setores where nome = 'Farmácia');
+  v_jur_uid uuid := (select id from auth.users where email = 'jur@x');
+  v_far_uid uuid := (select id from auth.users where email = 'far@x');
+  v_adm_uid uuid := (select id from auth.users where email = 'adm@x');
+begin
+  perform t.afirma('schema 16 registrado', exists (select 1 from public.schema_versao where versao = 16));
+
+  -- tabela de delegações fechada ao cliente
+  perform t.afirma('tabela delegacoes não é legível pelo cliente',
+     not has_table_privilege('authenticated', 'public.delegacoes', 'select')
+     and not has_table_privilege('anon', 'public.delegacoes', 'select'));
+
+  -- quem pode delegar
+  r := t.como('adm@x', $q$select public.usuarios_para_delegar()::text$q$);
+  perform t.afirma('ADM não delega (não é responsável por setor)', r like 'ERRO:%', r);
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date, 'teste', '3333')::text$q$, v_jur_uid));
+  perform t.afirma('não é possível delegar para si mesmo', r like 'ERRO:%outra pessoa%', r);
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date, 'teste', '3333')::text$q$,
+       (select id from auth.users where email = 'anon-sem-perfil@x')));
+  perform t.afirma('não é possível delegar para quem não está ativo no sistema', r like 'ERRO:%não está ativa%', r);
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date + 5, current_date, 'teste', '3333')::text$q$, v_far_uid));
+  perform t.afirma('data final anterior à inicial é recusada', r like 'ERRO:%anterior%', r);
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date, 'oi', '3333')::text$q$, v_far_uid));
+  perform t.afirma('justificativa curta é recusada', r like 'ERRO:%justificativa%', r);
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date + 5, 'cobertura de férias', '0000')::text$q$, v_far_uid));
+  perform t.afirma('PIN errado ao delegar retorna ok=false (sem exceção)', (r::jsonb->>'ok') = 'false', r);
+
+  -- lista de candidatos não inclui quem está pedindo
+  r := t.como('jur@x', $q$select public.usuarios_para_delegar()::text$q$);
+  perform t.afirma('lista de candidatos à delegação não inclui o próprio responsável',
+     not exists (select 1 from jsonb_array_elements(r::jsonb) u where (u->>'user_id')::uuid = v_jur_uid), r);
+
+  -- protocolo pendente no Jurídico, antes de qualquer delegação
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício para delegação 16/2026','1111')::text$q$);
+  v_id := (r::jsonb->>'id')::bigint;
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, v_id, v_jur));
+  perform t.afirma('protocolo encaminhado ao Jurídico', (r::jsonb->>'ok') = 'true', r);
+
+  r := t.como('far@x', format($q$select public.confirmar_etapa(%s,3,'4455')::text$q$, v_id));
+  perform t.afirma('sem delegação ativa, a Farmácia não recebe pelo Jurídico', r like 'ERRO:%não encontrado%', r);
+  r := t.como('far@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('sem delegação ativa, a Farmácia não vê o detalhe do protocolo do Jurídico', r = 'true', r);
+
+  -- jur@x delega o recebimento do Jurídico para far@x por 5 dias
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date + 5, 'cobertura de férias', '3333')::text$q$, v_far_uid));
+  perform t.afirma('delegação criada', (r::jsonb->>'ok') = 'true', r);
+  v_del := (r::jsonb->>'id')::bigint;
+  perform t.afirma('delegação registrada na trilha', exists (
+     select 1 from public.auditoria where acao = 'DELEGACAO_CRIADA' and (detalhes->>'delegado') = 'Carlos Farmácia'));
+
+  -- com a delegação ativa, far@x passa a enxergar e a poder tramitar o protocolo do Jurídico
+  r := t.como('far@x', format($q$select (public.detalhe_protocolo(%s) is null)::text$q$, v_id));
+  perform t.afirma('com delegação ativa, a Farmácia vê o detalhe do protocolo do Jurídico', r = 'false', r);
+  r := t.como('far@x', format($q$select public.confirmar_etapa(%s,3,'4455')::text$q$, v_id));
+  perform t.afirma('com delegação ativa, a Farmácia recebe pelo Jurídico', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('o recebimento via delegação fica marcado na trilha, de forma transparente', exists (
+     select 1 from public.auditoria where acao = 'RECEBIMENTO_SETOR' and (detalhes->>'numero') = (select numero from public.protocolos where id = v_id)
+       and (detalhes->>'via_delegacao') = 'true'));
+  perform t.afirma('o trâmite registrado usa o setor de destino real do protocolo (Jurídico), não o setor da pessoa delegada',
+     (select setor_nome from public.tramites where protocolo_id = v_id and etapa = 3) = 'Jurídico');
+
+  -- uma pessoa de outro setor, sem delegação, continua sem acesso
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício para delegação 2 16/2026','1111')::text$q$);
+  v_id2 := (r::jsonb->>'id')::bigint;
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, v_id2, v_far));
+  r := t.como('jur@x', format($q$select public.confirmar_etapa(%s,3,'3333')::text$q$, v_id2));
+  perform t.afirma('a delegação do Jurídico não dá acesso à Farmácia (não é via de mão dupla)', r like 'ERRO:%não encontrado%', r);
+
+  -- devolução ao ADM também aceita quem tem delegação ativa
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício para devolução via delegação 16/2026','1111')::text$q$);
+  j := r::jsonb;
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, (j->>'id')::bigint, v_jur));
+  r := t.como('far@x', format($q$select public.devolver_protocolo(%s,'Documento não pertence a este setor','4455')::text$q$, (j->>'id')::bigint));
+  perform t.afirma('com delegação ativa, a Farmácia também pode devolver ao ADM pelo Jurídico', (r::jsonb->>'ok') = 'true', r);
+
+  -- revogação: pelo delegante, por qualquer gestor, e pela própria pessoa delegada (autoliberação)
+  r := t.como('far@x', format($q$select public.painel_revogar_delegacao(%s,'0000')::text$q$, v_del));
+  perform t.afirma('PIN errado ao revogar retorna ok=false (sem exceção)', (r::jsonb->>'ok') = 'false', r);
+  r := t.como('adm@x', format($q$select public.painel_revogar_delegacao(%s,'2222')::text$q$, v_del));
+  perform t.afirma('quem não é gestor nem parte da delegação não pode revogá-la', r like 'ERRO:%não pode revogar%', r);
+  r := t.como('jur@x', format($q$select public.painel_revogar_delegacao(%s,'3333')::text$q$, v_del));
+  perform t.afirma('o delegante revoga a própria delegação', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('revogação registrada na trilha', exists (select 1 from public.auditoria where acao = 'DELEGACAO_REVOGADA'));
+  r := t.como('jur@x', format($q$select public.painel_revogar_delegacao(%s,'3333')::text$q$, v_del));
+  perform t.afirma('não é possível revogar de novo uma delegação já revogada', r like 'ERRO:%já não está mais ativa%', r);
+
+  -- depois de revogada, a Farmácia volta a não ter acesso ao Jurídico
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício pós-revogação 16/2026','1111')::text$q$);
+  v_id2 := (r::jsonb->>'id')::bigint;
+  r := t.como('adm@x', format($q$select public.confirmar_etapa(%s,2,'2222',null,%s)::text$q$, v_id2, v_jur));
+  r := t.como('far@x', format($q$select public.confirmar_etapa(%s,3,'4455')::text$q$, v_id2));
+  perform t.afirma('revogada a delegação, a Farmácia volta a não ter acesso ao Jurídico', r like 'ERRO:%não encontrado%', r);
+
+  -- gestor pode revogar qualquer delegação, e a própria pessoa delegada pode se autoliberar
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date + 5, 'nova cobertura', '3333')::text$q$, v_far_uid));
+  v_del := (r::jsonb->>'id')::bigint;
+  r := t.como('gestor@x', format($q$select public.painel_revogar_delegacao(%s,'5555')::text$q$, v_del));
+  perform t.afirma('o gestor revoga qualquer delegação', (r::jsonb->>'ok') = 'true', r);
+
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date + 5, 'mais uma cobertura', '3333')::text$q$, v_far_uid));
+  v_del := (r::jsonb->>'id')::bigint;
+  r := t.como('far@x', format($q$select public.painel_revogar_delegacao(%s,'4455')::text$q$, v_del));
+  perform t.afirma('a própria pessoa delegada pode se autoliberar', (r::jsonb->>'ok') = 'true', r);
+
+  -- listagem: cada um vê o que deve ver, e o "pode revogar" é coerente
+  r := t.como('jur@x', format($q$select public.painel_delegar_recebimento(%L, current_date, current_date + 5, 'cobertura para teste de listagem', '3333')::text$q$, v_far_uid));
+  v_del := (r::jsonb->>'id')::bigint;
+  j := t.como('far@x', $q$select public.painel_listar_delegacoes()::text$q$)::jsonb;
+  perform t.afirma('a pessoa delegada vê a delegação na listagem e pode revogá-la',
+     exists (select 1 from jsonb_array_elements(j) d where (d->>'id')::bigint = v_del and (d->>'pode_revogar')::boolean));
+  j := t.como('adm@x', $q$select public.painel_listar_delegacoes()::text$q$)::jsonb;
+  perform t.afirma('quem não tem relação com a delegação não a vê na listagem',
+     not exists (select 1 from jsonb_array_elements(j) d where (d->>'id')::bigint = v_del));
+  j := t.como('gestor@x', $q$select public.painel_listar_delegacoes()::text$q$)::jsonb;
+  perform t.afirma('o gestor vê todas as delegações', exists (select 1 from jsonb_array_elements(j) d where (d->>'id')::bigint = v_del));
+  perform public.painel_revogar_delegacao(v_del, '3333');   -- (como dono) não deixa pendência para os testes seguintes
+
+  -- relatório: produtividade por usuário e tendência diária com registrados x concluídos
+  j := t.como('gestor@x', format($q$select public.painel_relatorio(current_date - 5, current_date, false)::text$q$))::jsonb;
+  perform t.afirma('relatório traz produtividade por usuário', jsonb_typeof(j->'por_usuario') = 'array' and jsonb_array_length(j->'por_usuario') > 0, (j->'por_usuario')::text);
+  perform t.afirma('produtividade por usuário traz etapas e tempo médio',
+     exists (select 1 from jsonb_array_elements(j->'por_usuario') u where (u->>'usuario') = 'João Adm' and (u->>'etapa2')::int > 0));
+  perform t.afirma('tendência diária traz registrados e concluídos',
+     jsonb_typeof(j->'por_dia') = 'array' and (select bool_and(d ? 'registrados' and d ? 'concluidos') from jsonb_array_elements(j->'por_dia') d));
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='

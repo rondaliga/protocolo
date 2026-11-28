@@ -78,6 +78,7 @@
           <button type="button" role="menuitem" id="btn-pin"><span data-ico="pin"></span>Alterar PIN</button>
           <button type="button" role="menuitem" id="btn-mfa"><span data-ico="escudo"></span>Verificação em duas etapas</button>
           <button type="button" role="menuitem" id="btn-avisos"><span data-ico="sino"></span>Avisos neste aparelho</button>
+          <button type="button" role="menuitem" id="btn-delegar" hidden><span data-ico="seguir"></span>Delegar recebimento</button>
           <hr>
           <button type="button" role="menuitem" class="btn-tema" data-tema-btn>Tema: Automático</button>
         </div>
@@ -363,6 +364,17 @@
           <table>
             <thead><tr><th>Setor</th><th>Usuários ativos</th><th>Situação</th><th>Ações</th></tr></thead>
             <tbody id="tbody-set"></tbody>
+          </table>
+        </div>
+        </section>
+        <section class="sis-sec" id="sis-delegacoes" aria-labelledby="sis-delegacoes-t">
+        <h2 data-ico="seguir" id="sis-delegacoes-t" tabindex="-1">Delegações de recebimento</h2>
+        <p class="dica">Períodos em que outra pessoa foi autorizada a receber e tramitar documentos no lugar do responsável de um setor
+          (ex.: férias). Você pode revogar qualquer delegação a qualquer momento.</p>
+        <div class="tabela-wrap">
+          <table>
+            <thead><tr><th>Setor</th><th>Delegado por</th><th>Para</th><th>Período</th><th>Situação</th><th>Ações</th></tr></thead>
+            <tbody id="tbody-deleg"></tbody>
           </table>
         </div>
         </section>
@@ -843,6 +855,37 @@
       <button type="submit" class="btn primario" data-ico="salvar">Salvar</button>
     </div>
   </form>
+</dialog>
+
+<!-- ============ MODAL: DELEGAR RECEBIMENTO (super_setor) ============ -->
+<dialog id="dlg-delegacao" aria-labelledby="deleg-titulo">
+  <div class="modal-corpo">
+    <h2 data-ico="seguir" id="deleg-titulo">Delegar recebimento</h2>
+    <p class="dica">Em férias ou afastamento, outra pessoa ativa no sistema pode receber e tramitar os documentos do seu
+      setor por um período definido, sem precisar do seu PIN. A troca fica registrada na trilha de auditoria normalmente.</p>
+    <div id="deleg-atual"></div>
+    <form id="form-deleg-revogar" autocomplete="off" hidden>
+      <label>Seu PIN, para encerrar agora <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></label>
+      <p class="erro" role="alert" hidden></p>
+      <button type="submit" class="btn sec" data-ico="fechar">Encerrar delegação agora</button>
+    </form>
+    <form id="form-delegar" autocomplete="off">
+      <label>Delegar a
+        <select name="delegado" required></select>
+      </label>
+      <div class="f-intervalo">
+        <label>De <input type="date" name="inicio" required></label>
+        <label>Até <input type="date" name="fim" required></label>
+      </div>
+      <label>Justificativa <textarea name="justificativa" maxlength="500" rows="2" placeholder="Ex.: férias de 10 a 24 de dezembro" required></textarea></label>
+      <label>Seu PIN <input class="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></label>
+      <p class="erro" id="deleg-erro" role="alert" hidden></p>
+      <div class="modal-acoes">
+        <button data-ico="fechar" type="button" class="btn sec" data-fechar>Fechar</button>
+        <button type="submit" class="btn primario" data-ico="seguir">Delegar</button>
+      </div>
+    </form>
+  </div>
 </dialog>
 
 <!-- ============ MODAL: AVISOS NO APARELHO ============ -->

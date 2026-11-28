@@ -725,9 +725,15 @@ table td.d, table td.detalhes { overflow-wrap: anywhere; }
 #rel-saida h3 { margin: 1.25rem 0 .4rem; font-size: 1rem; }
 .grafico { width: 100%; height: 150px; display: block; background: var(--superficie-2, rgba(127,127,127,.06)); border-radius: 10px; }
 .g-barra { fill: var(--azul); }
+.g-barra2 { fill: var(--ok); }
 .g-eixo { stroke: var(--borda, #cbd5e1); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .g-h { width: 100%; min-width: 80px; height: 10px; display: block; }
 .grafico-eixo { display: flex; justify-content: space-between; font-size: .8rem; color: var(--texto-2, inherit); margin-top: .3rem; }
+.grafico-legenda { display: flex; gap: 1rem; font-size: .8rem; color: var(--texto-2, inherit); margin-top: .5rem; }
+.leg-item { display: inline-flex; align-items: center; gap: .35rem; }
+.leg-cor { width: .7rem; height: .7rem; border-radius: 2px; display: inline-block; }
+.leg-cor.g-barra { background: var(--azul); }
+.leg-cor.g-barra2 { background: var(--ok); }
 .tabela-rolagem { overflow-x: auto; }
 .tab-rel { width: 100%; border-collapse: collapse; }
 .tab-rel th, .tab-rel td { padding: .55rem .7rem; text-align: left; border-bottom: 1px solid var(--borda, #e2e8f0); }

@@ -302,6 +302,25 @@
     $('#dlg-mfa-cad').addEventListener('cancel', (ev) => { ev.preventDefault(); $('#mfa-cad-fechar').click(); });
   }
 
+  // ------------------------------------------------------------------ delegação temporária de recebimento (super_setor)
+  async function abrirDelegar() {
+    const f = $('#form-delegar'), fr = $('#form-deleg-revogar');
+    f.reset(); erroForm(f, ''); fr.reset(); erroForm(fr, '');
+    f.inicio.min = f.fim.min = new Date().toISOString().slice(0, 10);
+    $('#deleg-atual').innerHTML = 'Carregando…'; fr.hidden = true;
+    $('#dlg-delegacao').showModal();
+    try {
+      const [candidatos, lista] = await Promise.all([rpc('usuarios_para_delegar'), rpc('painel_listar_delegacoes')]);
+      f.delegado.innerHTML = '<option value="">Selecione…</option>'
+        + candidatos.map((u) => `<option value="${esc(u.user_id)}">${esc(u.nome)} (${esc(PAPEL[u.papel] || u.papel)}${u.setor_nome ? ` · ${esc(u.setor_nome)}` : ''})</option>`).join('');
+      const minha = lista.find((d) => d.ativa && d.delegante_nome === estado.perfil.nome);
+      if (minha) {
+        $('#deleg-atual').innerHTML = `<p class="dica">Ativa agora: <strong>${esc(minha.delegado_nome)}</strong> recebe pelo seu setor até ${data(`${minha.fim}T12:00:00`)}.</p>`;
+        fr.dataset.id = String(minha.id); fr.hidden = false;
+      } else { $('#deleg-atual').innerHTML = ''; }
+    } catch (e) { erroForm(f, e.message); }
+  }
+
   // chamada no começo de iniciarApp: decide se pede o código, exige o cadastro ou segue direto
   async function garantirMfa() {
     const e = await rpc('mfa_estado');
@@ -326,6 +345,7 @@
     $('#atalho-meus').hidden = perfil.papel === 'portaria';
     $('#btn-aba-auditoria').hidden = perfil.papel !== 'gestor';
     $('#btn-aba-painel').hidden = perfil.papel !== 'gestor';
+    $('#btn-delegar').hidden = perfil.papel !== 'super_setor';
     $$('.eu').forEach((e) => { e.textContent = perfil.nome; });
     $('.sino-wrap').hidden = perfil.papel === 'portaria'; estado.alertasVistos = null; estado.setores = null;
     estado.ultimaAtividade = Date.now();
@@ -1211,6 +1231,19 @@
     });
     document.addEventListener('click', (ev) => { if (!menuConta.hidden && !ev.target.closest('.conta-wrap')) fecharMenuConta(false); });
     $('#btn-senha').addEventListener('click', () => abrirConta(false));
+    $('#btn-delegar').addEventListener('click', () => { fecharMenuConta(false); abrirDelegar(); });
+    $('#form-delegar').addEventListener('submit', (ev) => {
+      ev.preventDefault(); const f = ev.target;
+      if (f.fim.value < f.inicio.value) { erroForm(f, 'A data final não pode ser anterior à inicial.'); return; }
+      enviar(f, () => rpc('painel_delegar_recebimento', {
+        p_delegado_user_id: f.delegado.value, p_inicio: f.inicio.value, p_fim: f.fim.value, p_justificativa: f.justificativa.value, p_pin: f.pin.value,
+      }), async () => { toast('Delegação registrada.'); await abrirDelegar(); });
+    });
+    $('#form-deleg-revogar').addEventListener('submit', (ev) => {
+      ev.preventDefault(); const f = ev.target;
+      enviar(f, () => rpc('painel_revogar_delegacao', { p_id: Number(f.dataset.id), p_pin: f.pin.value }),
+        async () => { toast('Delegação encerrada.'); await abrirDelegar(); });
+    });
     ligarMfaLogin(); ligarMfaCadastro();
     $('#btn-mfa').addEventListener('click', () => { abrirCadastroMfa(false).catch(() => {}); });
     $('#dlg-conta').addEventListener('cancel', (ev) => { if (estado.contaObrigatoria) ev.preventDefault(); });   // Esc não pula o primeiro acesso
