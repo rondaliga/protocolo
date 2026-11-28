@@ -549,12 +549,12 @@ try:
         print("selo automático:", page.inner_text("#resultado-verificacao"))
         page.click("#btn-aba-painel"); page.click("[data-sub=backup]")
         page.locator("#versao-schema:not(:empty)").wait_for(timeout=8000)
-        assert "13 de 13" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
+        assert "14 de 14" in page.inner_text("#versao-schema") and "atualizado" in page.inner_text("#versao-schema"), page.inner_text("#versao-schema")
         with page.expect_download() as dl: page.click("#btn-backup")
         import json as _json
         bkp = _json.load(open(dl.value.path(), encoding="utf-8"))
         assert dl.value.suggested_filename.startswith("backup-protocolo-") and dl.value.suggested_filename.endswith(".json")
-        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 13
+        assert set(bkp) >= {"gerado_em", "versao_schema", "protocolos", "tramites", "movimentacoes", "auditoria"} and bkp["versao_schema"] == 14
         assert all("assinatura_png" not in t for t in bkp["tramites"]), "backup não deve levar a imagem da assinatura"
         esperar_toast(page, "Backup gerado")
         page.fill("#ret-meses", "1"); page.click("#btn-retencao")
@@ -846,25 +846,18 @@ try:
         page.locator("#view-app").wait_for(state="visible"); esperar_toast(page, "não encontrado"); assert page.locator("#dlg-detalhe[open]").count() == 0
         sair(page)
 
-        # =================== v13: conta de teste / ambiente de testes técnicos ===================
-        psql("insert into auth.users (email) values ('rauancosta50@hotmail.com')")
-        psql("select public.admin_cadastrar_perfil('rauancosta50@hotmail.com','Rauan Costa','gestor',null,'7777')")
-        psql("update auth.users set encrypted_password = extensions.crypt('Trocar@123', extensions.gen_salt('bf')) where email='rauancosta50@hotmail.com'")
-
-        # gestor comum: não vê o filtro de teste no Livro, nem o botão de marcar conta de teste em Usuários
-        login(page, "gestor", senha=SENHA, email="gestor@teste.local")
-        assert page.locator("#f-incluir-teste").is_hidden(), "gestor comum não deve ver o filtro de teste no Livro"
-        page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]"); page.locator("#tbody-usr tr").first.wait_for()
-        linha = page.locator("#tbody-usr tr:has-text('Maria (Portaria)')"); linha.wait_for()
-        assert linha.locator("[data-uacao=teste]").count() == 0, "só o gestor autorizado deve ver o botão de marcar conta de teste"
+        # =================== v14: conta de teste / ambiente de testes técnicos (qualquer gestor) ===================
+        # ADM não é gestor: não vê o filtro de teste no Livro, nem o botão de marcar conta de teste em Usuários
+        login(page, "adm", senha=SENHA, email="adm@teste.local")
+        assert page.locator("#f-incluir-teste").count() == 0 or page.locator("#f-incluir-teste").is_hidden()
         sair(page)
 
-        # gestor autorizado (rauancosta50@hotmail.com) marca a Portaria como conta de teste
-        login(page, "rauan", senha=SENHA, email="rauancosta50@hotmail.com")
+        # qualquer gestor (não é mais restrito a um e-mail específico) marca a Portaria como conta de teste
+        login(page, "gestor", senha=SENHA, email="gestor@teste.local")
         page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]"); page.locator("#tbody-usr tr").first.wait_for()
         linha = page.locator("#tbody-usr tr:has-text('Maria (Portaria)')"); linha.wait_for()
         linha.locator("[data-uacao=teste]").click()
-        page.fill("#form-ativo input[name=pin]", "7777"); page.click("#form-ativo button[type=submit]")
+        page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
         esperar_toast(page, "marcada como teste"); page.wait_for_timeout(500)
         assert "conta de teste" in page.locator("#tbody-usr tr:has-text('Maria (Portaria)')").inner_text()
         sair(page)
@@ -877,35 +870,39 @@ try:
         page.click("#form-novo button[type=submit]"); esperar_toast(page, "registrado"); page.wait_for_timeout(600); fechar_folha(page)
         n_teste = psql("select numero from public.protocolos where descricao='Teste técnico do ambiente de homologação'")
         assert psql(f"select ambiente from public.protocolos where numero='{n_teste}'") == "teste"
-        v_total_antes = psql("select coalesce((select count(*) from public.protocolos where ambiente='producao'),0)")
         sair(page)
 
-        # gestor comum (e o ADM): totais do Livro/relatório não mudam com o registro de teste
+        # o ADM (não gestor) nunca vê o teste, nem com filtro: ele nem tem o controle
+        login(page, "adm", senha=SENHA, email="adm@teste.local")
+        page.click("[data-aba=protocolos]")
+        assert n_teste not in page.inner_text("#tbody"), "protocolo de teste não deve aparecer no Livro de quem não é gestor"
+        sair(page)
+
+        # o gestor que marcou: por padrão também não vê o teste; com o filtro ligado, vê (com o rótulo TESTE)
         login(page, "gestor", senha=SENHA, email="gestor@teste.local")
         page.click("[data-aba=protocolos]")
-        assert n_teste not in page.inner_text("#tbody"), "protocolo de teste não deve aparecer no Livro de um gestor comum"
-        sair(page)
-
-        # gestor autorizado: por padrão também não vê o teste; com o filtro ligado, vê (com o rótulo TESTE)
-        login(page, "rauan", senha=SENHA, email="rauancosta50@hotmail.com")
-        page.click("[data-aba=protocolos]")
-        assert n_teste not in page.inner_text("#tbody"), "mesmo o gestor autorizado só vê teste com o filtro ligado"
+        assert n_teste not in page.inner_text("#tbody"), "por padrão, nem o gestor que marcou vê o registro de teste"
         expect(page.locator("#f-incluir-teste")).to_be_visible()
         page.click("#f-incluir-teste input"); page.wait_for_timeout(700)
         linha_teste = page.locator(f"#tbody tr:has-text('{n_teste}')"); linha_teste.wait_for()
         assert "TESTE" in linha_teste.inner_text()
         page.click("#f-incluir-teste input"); page.wait_for_timeout(700)
         assert n_teste not in page.inner_text("#tbody")
-        sair(page)
 
-        # a trilha de auditoria NUNCA esconde: qualquer gestor vê a marcação da conta de teste e o registro do protocolo de teste
-        login(page, "gestor", senha=SENHA, email="gestor@teste.local")
+        # a trilha de auditoria NUNCA esconde: o mesmo gestor vê a marcação da conta de teste e o registro do protocolo de teste
         page.click("#btn-aba-auditoria"); page.fill("#form-aud input[name=q]", n_teste); page.wait_for_timeout(900)
         txt_aud_teste = page.inner_text("#tbody-audit")
         assert "Protocolo registrado" in txt_aud_teste, "a trilha deve mostrar o registro do protocolo de teste a qualquer gestor"
         page.fill("#form-aud input[name=q]", "Maria (Portaria)"); page.wait_for_timeout(900)
         assert "marcad" in page.inner_text("#tbody-audit").lower() or psql("select count(*) from public.auditoria where acao='CONTA_MARCADA_TESTE'") == "1"
         page.fill("#form-aud input[name=q]", ""); page.wait_for_timeout(500)
+
+        # desmarca de volta (deixa o banco limpo para não afetar nenhuma outra verificação)
+        page.click("#btn-aba-painel"); page.click("[data-sub=usuarios]"); page.locator("#tbody-usr tr").first.wait_for()
+        linha = page.locator("#tbody-usr tr:has-text('Maria (Portaria)')"); linha.wait_for()
+        linha.locator("[data-uacao=teste]").click()
+        page.fill("#form-ativo input[name=pin]", "5556"); page.click("#form-ativo button[type=submit]")
+        esperar_toast(page, "desmarcada")
         sair(page)
         b.close()
     print("\nE2E OK")

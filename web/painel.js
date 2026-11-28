@@ -58,7 +58,7 @@
       return String(v);
     };
     const PAPEIS = { portaria: 'Portaria', adm: 'ADM', super_setor: 'Setor de destino', gestor: 'Gestor' };
-    const ASSIN = { pin: 'somente PIN', pin_digitada: 'assinatura digitada', pin_canvas: 'assinatura desenhada', digitada: 'assinatura digitada', desenhada: 'assinatura desenhada' };
+    const ASSIN = { pin: 'PIN (sem assinatura visual)', pin_digitada: 'assinatura digitada', pin_canvas: 'assinatura desenhada', digitada: 'assinatura digitada', desenhada: 'assinatura desenhada' };
     const dia = (v) => (v ? data(`${String(v).slice(0, 10)}T12:00:00`) : 'sem prazo');
     const aspas = (v) => `“${v}”`;
 
@@ -109,6 +109,14 @@
         case 'FERIADO_SALVO': case 'FERIADO_REMOVIDO': add(`${dia(d.data)} — ${d.descricao}`); break;
         case 'PERFIL_CADASTRADO': add(`${d.email} (${PAPEIS[d.papel] || d.papel}${d.setor ? ` — ${d.setor}` : ''})`); break;
         case 'PERFIL_DESATIVADO': case 'PERFIL_REATIVADO': add(d.email); break;
+        case 'CONTA_MARCADA_TESTE': add(`${d.nome || ''} (${d.email || ''}) passou a ser conta de teste`); break;
+        case 'CONTA_DESMARCADA_TESTE': add(`${d.nome || ''} (${d.email || ''}) deixou de ser conta de teste`); break;
+        case 'RELATORIO_GERADO': add(`Período: ${dia(d.inicio)} a ${dia(d.fim)}`); add(d.incluiu_teste ? 'Incluindo registros de teste' : ''); break;
+        case 'EMAIL_TESTE': add(`Enviado para ${d.destino || ''}`); break;
+        case 'ACESSO_ENVIADO_POR_EMAIL': add(`Para ${d.usuario || ''} (${d.email || ''})`); break;
+        case 'MFA_ATIVADO': case 'MFA_DESATIVADO': case 'SEGREDO_INTEGRACAO_DEFINIDO':
+        case 'LOGIN': case 'LOGOUT': case 'LOGOUT_INATIVIDADE': case 'FALHA_PIN': case 'USUARIO_BLOQUEADO':
+          break;
         default:
           Object.entries(d || {}).forEach(([k, v]) => add(`${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`));
       }
@@ -309,8 +317,8 @@
           <button type="button" class="btn mini sec" data-uacao="pin" data-ico="pin">Novo PIN</button>`}
           ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear" data-ico="cadeado">Desbloquear PIN</button>' : ''}
           ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa" data-ico="escudo">Redefinir 2 etapas</button>' : ''}
+          ${painel.podeVerTeste && u.user_id !== eu ? `<button type="button" class="btn mini sec" data-uacao="teste" aria-pressed="${u.conta_teste ? 'true' : 'false'}" title="${u.conta_teste ? 'Remover marcação de conta de teste' : 'Marcar como conta de teste (uso técnico interno)'}">Teste</button>` : ''}
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini ${u.ativo ? 'perigo' : 'sec'}" data-uacao="ativo">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}
-          ${painel.podeVerTeste && u.user_id !== eu ? `<button type="button" class="btn mini sec" data-uacao="teste">${u.conta_teste ? 'Desmarcar teste' : 'Marcar como teste'}</button>` : ''}
           ${u.user_id !== eu && !u.ativo ? '<button type="button" class="btn mini perigo" data-uacao="excluir" data-ico="lixeira">Excluir</button>' : ''}
         </td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
     }
@@ -541,7 +549,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 13${v < 13 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 14${v < 14 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {

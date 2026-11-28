@@ -206,6 +206,7 @@ td.detalhes { font-size: .78rem; color: var(--suave); max-width: 380px; word-bre
 .chip.concluido { background: var(--ok-bg); color: var(--ok); }
 .tag { font-size: .68rem; font-weight: 700; padding: .05rem .4rem; border-radius: 4px; background: var(--ambar-bg); color: var(--ambar); }
 .tag.teste { background: var(--roxo-bg, #efe6ff); color: var(--roxo, #6b3fd4); }
+.btn.mini[data-uacao="teste"][aria-pressed="true"] { background: var(--roxo-bg, #efe6ff); color: var(--roxo, #6b3fd4); border-color: var(--roxo, #6b3fd4); }
 
 /* ---------- v2: prazo, alertas, sino, foto ---------- */
 .kpi.k-venc { border-left-color: var(--erro); }
