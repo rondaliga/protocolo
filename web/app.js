@@ -367,11 +367,12 @@
     const f = $('#form-filtros');
     const v = (n) => (f[n].value || '').trim() || null;
     return { p_q: v('q'), p_status: v('status'), p_data_ini: v('data_ini'), p_data_fim: v('data_fim'),
-             p_alerta: v('alerta'), p_ordem: f.ordem.value || 'recentes' };
+             p_alerta: v('alerta'), p_ordem: f.ordem.value || 'recentes', p_incluir_teste: !!f.incluir_teste.checked };
   }
 
   async function carregarResumo() {
-    const r = await rpc('resumo_livro');
+    const r = await rpc('resumo_livro', { p_incluir_teste: !!$('#form-filtros').incluir_teste.checked });
+    $('#f-incluir-teste').hidden = !r.pode_ver_teste;
     $('#k-total').textContent = r.total; $('#k-adm').textContent = r.pendente_adm;
     $('#k-setor').textContent = r.pendente_setor; $('#k-ok').textContent = r.concluido;
     $('#k-hoje').textContent = `${r.hoje} ${r.hoje === 1 ? 'registrado' : 'registrados'} hoje`;
@@ -397,7 +398,7 @@
     $('#tbody').innerHTML = r.itens.map((x) => `
       <tr data-id="${esc(x.id)}" tabindex="0" class="${x.semaforo === 'vencido' && x.status !== 'concluido' ? 'linha-vencida' : ''}">
         <td class="num">${esc(x.numero)}</td>
-        <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag" data-ico="camera" title="Com foto" aria-label="Com foto"></span>' : ''}</td>
+        <td class="desc">${tipoHtml(x)}${esc(x.descricao)}${x.ambiente === 'teste' ? ' <span class="tag teste" title="Registro de teste técnico: não entra nos relatórios nem no histórico operacional">TESTE</span>' : ''}${x.n_correcoes ? ' <span class="tag">corrigida</span>' : ''}${x.n_fotos ? ' <span class="tag" data-ico="camera" title="Com foto" aria-label="Com foto"></span>' : ''}</td>
         <td class="onde">${ondeHtml(x)}</td>
         <td class="prazo">${prazoHtml(x)}</td>
         <td>${celulaEtapa(x.e1_em, x.e1_usuario)}</td>
@@ -1005,7 +1006,7 @@
     const aplicar = () => { estado.pagina = 1; salvarFiltros(); recarregar(); };
     f.addEventListener('submit', (ev) => ev.preventDefault());
     f.q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(aplicar, 300); });
-    ['status', 'alerta', 'ordem', 'data_ini', 'data_fim'].forEach((n) => f[n].addEventListener('change', aplicar));
+    ['status', 'alerta', 'ordem', 'data_ini', 'data_fim', 'incluir_teste'].forEach((n) => f[n].addEventListener('change', aplicar));
     $('#atalhos').addEventListener('click', (ev) => {
       const b = ev.target.closest('.atalho'); if (!b) return;
       f.reset(); f.alerta.value = b.dataset.alerta || ''; f.ordem.value = f.alerta.value === 'semana' ? 'prazo' : 'recentes'; aplicar();

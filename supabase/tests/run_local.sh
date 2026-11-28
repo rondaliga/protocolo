@@ -27,5 +27,7 @@ psql -v ON_ERROR_STOP=1 -q -d $DB -f ../11_boas_vindas.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../11_boas_vindas.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../12_qr_excluir_usuario.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f ../12_qr_excluir_usuario.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../13_ambiente_teste.sql >/dev/null
+psql -v ON_ERROR_STOP=1 -q -d $DB -f ../13_ambiente_teste.sql >/dev/null
 psql -v ON_ERROR_STOP=1 -q -d $DB -f 02_testes.sql 2>&1 | sed -E 's/^psql:[^ ]+ [0-9]+: //'
 psql -qc "drop database $DB" postgres

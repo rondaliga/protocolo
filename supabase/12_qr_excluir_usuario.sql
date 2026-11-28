@@ -170,8 +170,39 @@ begin
   perform public._auditar(v_uid, v_perfil.nome, 'IMPRESSAO_' || p_tipo, p_protocolo_id, v_det);
 end $$;
 
+-- ---------- 5. nomes de usuário no padrão "Primeira Letra Maiúscula" (ex.: Maria José de Paiva Rodrigues)
+create or replace function public._nome_proprio(p_nome text) returns text
+language plpgsql immutable set search_path = public as $$
+declare v text; v_pal text; v_out text[] := '{}'; v_i int := 0;
+begin
+  if p_nome is null then return null; end if;
+  v := btrim(regexp_replace(p_nome, '\s+', ' ', 'g'));
+  foreach v_pal in array string_to_array(v, ' ') loop
+    v_i := v_i + 1;
+    v_pal := initcap(lower(v_pal));
+    if v_i > 1 and v_pal in ('De', 'Da', 'Do', 'Das', 'Dos', 'E', 'Di', 'Du') then v_pal := lower(v_pal); end if;
+    v_out := v_out || v_pal;
+  end loop;
+  return array_to_string(v_out, ' ');
+end $$;
+
+create or replace function public._trg_perfis_nome() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.nome := public._nome_proprio(new.nome);
+  return new;
+end $$;
+
+drop trigger if exists trg_perfis_nome on public.perfis;
+create trigger trg_perfis_nome before insert or update of nome on public.perfis
+  for each row execute function public._trg_perfis_nome();
+
+-- ajusta os nomes já cadastrados (a condição WHERE é exigida pelo pg-safeupdate do Supabase)
+update public.perfis set nome = public._nome_proprio(nome) where nome is distinct from public._nome_proprio(nome);
+
 insert into public.schema_versao (versao, arquivo) values (12, '12_qr_excluir_usuario.sql') on conflict (versao) do nothing;
 
+revoke all on function public._trg_perfis_nome() from public, anon, authenticated;
 revoke all on function public.protocolo_por_numero(text), public.painel_excluir_usuario(uuid, text),
   public._trg_protocolos_urgencia() from public, anon, authenticated;
 grant execute on function public.protocolo_por_numero(text), public.painel_excluir_usuario(uuid, text) to authenticated;

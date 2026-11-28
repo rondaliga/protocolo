@@ -279,6 +279,9 @@
       try {
         painel.usuarios = await rpc('painel_listar_usuarios');
         try { painel.mfa = new Set(await rpc('painel_mfa_usuarios')); } catch { painel.mfa = new Set(); }     // 07 ainda não aplicado: sem selo
+        if (painel.podeVerTeste === undefined) {
+          try { painel.podeVerTeste = !!(await rpc('resumo_livro')).pode_ver_teste; } catch { painel.podeVerTeste = false; }
+        }
         renderUsuarios();
       } catch (e) { falha(e); }
     }
@@ -296,7 +299,7 @@
       const eu = LP.estado().sessao.uid;
       $('#usr-contagem').textContent = pl(l.length, 'usuário', 'usuários');
       $('#tbody-usr').innerHTML = l.map((u) => `<tr class="${u.ativo ? '' : 'inativo'}">
-        <td><strong>${esc(u.nome)}</strong>${u.user_id === eu ? ' <span class="tag">você</span>' : ''}${painel.mfa && painel.mfa.has(u.user_id) ? ' <span class="tag" title="Verificação em duas etapas ativa">2 etapas</span>' : ''}<small class="et-sub">${esc(u.email || '')}</small></td>
+        <td><strong>${esc(u.nome)}</strong>${u.user_id === eu ? ' <span class="tag">você</span>' : ''}${painel.mfa && painel.mfa.has(u.user_id) ? ' <span class="tag" title="Verificação em duas etapas ativa">2 etapas</span>' : ''}${u.conta_teste ? ' <span class="tag teste" title="Os protocolos registrados por esta conta ficam fora do Livro e dos relatórios de produção">conta de teste</span>' : ''}<small class="et-sub">${esc(u.email || '')}</small></td>
         <td>${esc(PAPEIS[u.papel] || u.papel)}${u.setor_nome ? `<small class="et-sub">${esc(u.setor_nome)}</small>` : ''}</td>
         <td>${situacao(u)}</td>
         <td class="nw" data-rot="Último acesso">${u.ultimo_acesso ? `${data(u.ultimo_acesso)} ${hora(u.ultimo_acesso)}` : 'nunca entrou'}</td>
@@ -307,6 +310,7 @@
           ${u.pin_bloqueado ? '<button type="button" class="btn mini sec" data-uacao="desbloquear" data-ico="cadeado">Desbloquear PIN</button>' : ''}
           ${u.user_id !== eu && painel.mfa && painel.mfa.has(u.user_id) ? '<button type="button" class="btn mini sec" data-uacao="mfa" data-ico="escudo">Redefinir 2 etapas</button>' : ''}
           ${u.user_id === eu ? '' : `<button type="button" class="btn mini ${u.ativo ? 'perigo' : 'sec'}" data-uacao="ativo">${u.ativo ? 'Desativar' : 'Reativar'}</button>`}
+          ${painel.podeVerTeste && u.user_id !== eu ? `<button type="button" class="btn mini sec" data-uacao="teste">${u.conta_teste ? 'Desmarcar teste' : 'Marcar como teste'}</button>` : ''}
           ${u.user_id !== eu && !u.ativo ? '<button type="button" class="btn mini perigo" data-uacao="excluir" data-ico="lixeira">Excluir</button>' : ''}
         </td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum usuário encontrado.</td></tr>';
     }
@@ -331,6 +335,15 @@
     }
     const ajustarSetor = () => { const f = $('#form-usuario'); $('#lbl-usr-setor').hidden = f.papel.value !== 'super_setor'; };
 
+    // "MARIA JOSE DE PAIVA" / "maria josé" -> "Maria Jose de Paiva" / "Maria José" (mesma regra do banco)
+    const PARTICULAS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'di', 'du']);
+    function nomePadrao(t) {
+      return String(t || '').trim().replace(/\s+/g, ' ').split(' ').map((p, i) => {
+        const m = p.toLocaleLowerCase('pt-BR');
+        if (i > 0 && PARTICULAS.has(m)) return m;
+        return m.replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_, a, l) => a + l.toLocaleUpperCase('pt-BR'));
+      }).join(' ');
+    }
     function mostrarCredenciais(linhas, nome, titulo, copiarTudo) {
       // copiarTudo (criação do acesso): lista simples + um único botão "Copiar tudo" (rótulo: valor, sem recuos).
       // nos demais casos (nova senha/PIN): um botão Copiar por dado, que copia exatamente o valor.
@@ -380,6 +393,16 @@
       $('#ativo-info').textContent = u.ativo
         ? 'O usuário perde o acesso imediatamente (sessões encerradas). Todo o histórico é mantido; nada é apagado.'
         : 'O usuário volta a poder entrar com a senha e o PIN atuais.';
+      $('#dlg-ativo').showModal(); f.pin.focus();
+    }
+    // conta técnica de teste: os protocolos que ela registrar ficam marcados "ambiente = teste" e somem do
+    // Livro/relatórios de todo mundo (nada é apagado; nenhum ato some da trilha de auditoria para ninguém)
+    function abrirContaTeste(u) {
+      const f = $('#form-ativo'); f.reset(); erroForm(f, ''); f.dataset.uid = u.user_id; f.dataset.modo = 'conta_teste'; f.dataset.teste = u.conta_teste ? '0' : '1';
+      $('#ativo-titulo').textContent = u.conta_teste ? `Desmarcar ${u.nome} como conta de teste?` : `Marcar ${u.nome} como conta de teste?`;
+      $('#ativo-info').textContent = u.conta_teste
+        ? 'Os próximos protocolos que esse usuário registrar voltam a valer como produção normalmente.'
+        : 'Os protocolos registrados por esse usuário passam a ficar marcados como teste: somem do Livro e dos relatórios de todos os outros perfis, mas continuam aparecendo, identificados, na trilha de auditoria.';
       $('#dlg-ativo').showModal(); f.pin.focus();
     }
 
@@ -518,7 +541,7 @@
 
     // ---------- sistema
     function carregarBackup() {
-      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 12${v < 12 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
+      rpc('versao_schema').then((v) => { $('#versao-schema').textContent = `Versão do banco de dados: ${v} de 13${v < 13 ? ' — rode o arquivo supabase/instalacao_completa.sql.' : ' (atualizado).'}`; }).catch(() => {});
     }
     async function carregarSistema() {
       try {
@@ -744,11 +767,13 @@
         else if (b.dataset.uacao === 'ativo') abrirAtivo(u);
         else if (b.dataset.uacao === 'mfa') abrirResetMfa(u);
         else if (b.dataset.uacao === 'excluir') abrirExcluir(u);
+        else if (b.dataset.uacao === 'teste') abrirContaTeste(u);
         else if (b.dataset.uacao === 'desbloquear') {
           try { await rpc('painel_desbloquear_pin', { p_user_id: u.user_id }); toast(`PIN de ${u.nome} desbloqueado.`); carregarUsuarios(); } catch (e) { falha(e); }
         }
       });
       $('#form-usuario').papel.addEventListener('change', ajustarSetor);
+      $('#form-usuario').nome.addEventListener('blur', (ev) => { ev.target.value = nomePadrao(ev.target.value); });
       $('#form-usuario').addEventListener('click', (ev) => {
         const g = ev.target.closest('[data-gerar]'); if (!g) return;
         const form = $('#form-usuario'); if (g.dataset.gerar === 'senha') form.senha.value = gerarSenha(); else form.pin_novo.value = gerarPin();
@@ -756,6 +781,7 @@
       $('#form-usuario').addEventListener('submit', (ev) => {
         ev.preventDefault(); const form = ev.target, uid = form.dataset.uid;
         if (form.papel.value === 'super_setor' && !form.setor.value) { erroForm(form, 'Escolha o setor do usuário.'); return; }
+        form.nome.value = nomePadrao(form.nome.value);
         const setor = form.papel.value === 'super_setor' ? Number(form.setor.value) : null;
         if (uid) {
           enviar(form, () => rpc('painel_atualizar_usuario', { p_user_id: uid, p_nome: form.nome.value, p_papel: form.papel.value, p_setor_id: setor, p_pin_gestor: form.pin.value }),
@@ -801,6 +827,12 @@
         if (form.dataset.modo === 'excluir') {
           enviar(form, () => rpc('painel_excluir_usuario', { p_user_id: form.dataset.uid, p_pin_gestor: form.pin.value }),
             async () => { $('#dlg-ativo').close(); toast('Usuário excluído.'); await carregarUsuarios(); });
+          return;
+        }
+        if (form.dataset.modo === 'conta_teste') {
+          const marcar = form.dataset.teste === '1';
+          enviar(form, () => rpc('painel_definir_conta_teste', { p_user_id: form.dataset.uid, p_teste: marcar, p_pin_gestor: form.pin.value }),
+            async () => { $('#dlg-ativo').close(); toast(marcar ? 'Conta marcada como teste.' : 'Conta desmarcada como teste.'); await carregarUsuarios(); });
           return;
         }
         enviar(form, () => rpc('painel_definir_ativo', { p_user_id: form.dataset.uid, p_ativo: ativar, p_pin_gestor: form.pin.value }),

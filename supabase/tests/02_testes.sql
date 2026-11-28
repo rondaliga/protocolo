@@ -703,7 +703,7 @@ end $$;
 do $$
 declare r text;
 begin
-  perform t.afirma('schema_versao registra os 12 arquivos', (select count(*) from public.schema_versao) = 12 and public.versao_schema() = 12);
+  perform t.afirma('schema_versao registra os 13 arquivos', (select count(*) from public.schema_versao) = 13 and public.versao_schema() = 13);
   perform t.afirma('tabela schema_versao não é legível pelo cliente', not has_table_privilege('authenticated', 'public.schema_versao', 'select'));
   update public.parametros set valor = '4' where chave = 'alerta_prazo_dias';
   perform t.afirma('semáforo "vence em breve" acompanha o parâmetro de antecedência',
@@ -719,7 +719,7 @@ begin
   perform t.afirma('retenção é negada a quem não é gestor', r like 'ERRO:%', r);
   r := t.como('gestor@x', $q$select public.exportar_backup()::text$q$);
   perform t.afirma('gestor exporta o backup completo', (r::jsonb ? 'protocolos') and (r::jsonb ? 'tramites') and (r::jsonb ? 'auditoria')
-     and (r::jsonb->>'versao_schema') = '12', left(r, 120));
+     and (r::jsonb->>'versao_schema') = '13', left(r, 120));
   perform t.afirma('backup não leva a imagem da assinatura', r not like '%assinatura_png%');
   perform t.afirma('exportação do backup é registrada na trilha', exists (select 1 from public.auditoria where acao = 'BACKUP_EXPORTADO')
      and t.como('gestor@x', 'select (public.verificar_auditoria()->>''ok'')') = 'true');
@@ -1123,6 +1123,67 @@ begin
   perform t.afirma('usuário com histórico não é excluído', r like 'ERRO:%participou de protocolos%' and exists (select 1 from public.perfis where user_id = v_por)
     and exists (select 1 from auth.users where id = v_por), r);
   perform t.como('gestor@x', format($q$select public.painel_definir_ativo(%L,true,'5555')::text$q$, v_por));
+  -- nomes no padrão "Primeira Letra Maiúscula"
+  perform t.afirma('_nome_proprio: maiúsculas', public._nome_proprio('MARIA JOSE DE PAIVA RODRIGUES') = 'Maria Jose de Paiva Rodrigues');
+  perform t.afirma('_nome_proprio: minúsculas e espaços extras', public._nome_proprio('  rauan   costa ') = 'Rauan Costa');
+  perform t.afirma('_nome_proprio: acentos e partículas', public._nome_proprio('vÂNIA alvares DOS santos e silva') = 'Vânia Alvares dos Santos e Silva', public._nome_proprio('vÂNIA alvares DOS santos e silva'));
+  perform t.afirma('_nome_proprio: apóstrofo', public._nome_proprio('joão d''ávila') = 'João D''Ávila', public._nome_proprio('joão d''ávila'));
+  r := t.como('gestor@x', $q$select public.painel_criar_usuario('nome1@x.com','JOSÉ DA SILVA','portaria',null,'Senha-Forte-123','2468','5555')::text$q$);
+  perform t.afirma('criar usuário padroniza o nome', r like '%"ok": true%' and exists (select 1 from public.perfis where email = 'nome1@x.com' and nome = 'José da Silva'), r);
+  perform t.como('gestor@x', format($q$select public.painel_atualizar_usuario(%L,'ana maria de souza','portaria',null,'5555')::text$q$, (select user_id from public.perfis where email = 'nome1@x.com')));
+  perform t.afirma('editar usuário padroniza o nome', exists (select 1 from public.perfis where email = 'nome1@x.com' and nome = 'Ana Maria de Souza'));
   perform t.afirma('schema 12 registrado', exists (select 1 from public.schema_versao where versao = 12));
+end $$;
+
+-- 13. Contas técnicas de teste: separação do Livro/relatórios, sem jamais ocultar nada da auditoria
+do $$
+declare r text; j jsonb; v_rauan uuid; v_portaria uuid; v_antes int; v_id_teste bigint;
+begin
+  insert into auth.users (email) values ('rauan@x');
+  perform public.admin_cadastrar_perfil('rauan@x','Rauan Costa','gestor',null,'6666');
+  update public.perfis set email = 'rauancosta50@hotmail.com' where user_id = (select id from auth.users where email = 'rauan@x');
+  v_rauan := (select id from auth.users where email = 'rauan@x');
+  v_portaria := (select id from auth.users where email = 'portaria@x');
+
+  perform t.afirma('_pode_ver_teste: só o e-mail cadastrado', public._pode_ver_teste((select p from public.perfis p where p.user_id = v_rauan)));
+  perform t.afirma('_pode_ver_teste: outro gestor não', not public._pode_ver_teste((select p from public.perfis p where p.user_id = (select id from auth.users where email = 'gestor@x'))));
+
+  -- só o gestor autorizado marca uma conta como técnica de teste
+  r := t.como('gestor@x', format($q$select public.painel_definir_conta_teste(%L,true,'5555')::text$q$, v_portaria));
+  perform t.afirma('outro gestor não marca conta de teste', r like 'ERRO:%responsável%', r);
+  r := t.como('rauan@x', format($q$select public.painel_definir_conta_teste(%L,true,'6666')::text$q$, v_portaria));
+  perform t.afirma('gestor autorizado marca a Portaria como conta de teste', (r::jsonb->>'ok') = 'true', r);
+  perform t.afirma('marcação de conta de teste fica na auditoria (nada é ocultado)',
+    exists (select 1 from public.auditoria where acao = 'CONTA_MARCADA_TESTE' and detalhes->>'email' = 'portaria@x'));
+
+  -- a contagem de produção (resumo_livro) não muda com o registro de teste
+  -- (sempre via t.como, com uma identidade explícita — chamar a função "nua" deixaria o auth.uid()
+  -- herdado do último t.como(), por ser set_config local à transação, e falsearia o teste)
+  r := t.como('gestor@x', $q$select (public.resumo_livro()->>'total')$q$); v_antes := r::int;
+  r := t.como('portaria@x', $q$select public.registrar_protocolo('Ofício de teste técnico - validação','1111')::text$q$);
+  j := r::jsonb; v_id_teste := (j->>'id')::bigint;
+  perform t.afirma('protocolo registrado por conta de teste fica marcado como teste', (j->>'ambiente') = 'teste', r);
+  r := t.como('gestor@x', $q$select (public.resumo_livro()->>'total')$q$);
+  perform t.afirma('outro gestor também não vê o registro de teste no total', r::int = v_antes, r);
+  r := t.como('adm@x', $q$select (public.listar_livro()->>'total')$q$);
+  perform t.afirma('ADM real não enxerga o protocolo de teste na fila dele', r::int = v_antes, r);
+
+  -- o gestor autorizado só vê ao pedir explicitamente ("Incluir registros de teste")
+  r := t.como('rauan@x', $q$select (public.resumo_livro(false)->>'total')$q$);
+  perform t.afirma('gestor autorizado, por padrão, também não vê teste', r::int = v_antes, r);
+  r := t.como('rauan@x', $q$select (public.resumo_livro(true)->>'total')$q$);
+  perform t.afirma('gestor autorizado, com o filtro ligado, vê o registro de teste', r::int = v_antes + 1, r);
+  r := t.como('rauan@x', format($q$select (public.detalhe_protocolo(%s)->>'ambiente')$q$, v_id_teste));
+  perform t.afirma('gestor autorizado abre o detalhe do protocolo de teste', r = 'teste', r);
+
+  -- nada disso tira o ato da trilha de auditoria: qualquer gestor continua vendo tudo
+  r := t.como('gestor@x', format($q$select count(*)::text from public.auditoria where protocolo_id = %s and acao = 'PROTOCOLO_CRIADO'$q$, v_id_teste));
+  perform t.afirma('a trilha de auditoria NUNCA esconde o ato de teste, nem de outro gestor', r = '1', r);
+
+  -- e-mail de "chegada" não é dirigido ao ADM real para um protocolo que não existe de verdade
+  perform t.afirma('protocolo de teste não dispara e-mail de chegada',
+    not exists (select 1 from public.fila_email where protocolo_id = v_id_teste and evento = 'CHEGADA'));
+
+  perform t.afirma('schema 13 registrado', exists (select 1 from public.schema_versao where versao = 13));
 end $$;
 \echo '=== TODOS OS TESTES DO SCHEMA PASSARAM ==='
